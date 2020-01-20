@@ -285,17 +285,11 @@ void	print_size(unsigned long long, const char *);
 int	print_buffer (ulong addr, void* data, uint width, uint count, uint linelen);
 
 /* common/main.c */
-extern char console_buffer[];
 void	main_loop	(void);
 int run_command(const char *cmd, int flag);
-int	__readline	(const char *const prompt, int show_buf);
-static inline int readline(const char *const prompt) { return __readline(prompt, 0); }
-int	__readline_into_buffer(const char *const prompt, char *buffer,
-			int timeout, int show_buf);
-static inline int readline_into_buffer(const char *const prompt, char *buffer, int timeout)
-{
-	return __readline_into_buffer(prompt, buffer, timeout, 0);
-}
+int	readline	(const char *const prompt);
+int	readline_into_buffer(const char *const prompt, char *buffer,
+			int timeout);
 int	parse_line (char *, char *[]);
 void	init_cmd_timeout(void);
 void	reset_cmd_timeout(void);
@@ -315,7 +309,6 @@ extern ulong monitor_flash_len;
 int mac_read_from_eeprom(void);
 extern u8 _binary_dt_dtb_start[];	/* embedded device tree blob */
 int set_cpu_clk_info(void);
-int	reset_to_default(void);
 
 /* common/flash.c */
 void flash_perror (int);

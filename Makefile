@@ -57,18 +57,17 @@ export	HOSTARCH HOSTOS SHELL
 VENDOR=
 
 #########################################################################
-# QSDK 1.3 ES3
-export HOSTCC=arm-openwrt-linux-gcc
-export HOSTSTRIP=true
-export CROSS_COMPILE=arm-openwrt-linux-
-export STAGING_DIR=`which arm-openwrt-linux-gcc|sed -e "s,/bin/arm-openwrt-linux--gcc,,"`
-
-#########################################################################
 # Allow for silent builds
 ifeq (,$(findstring s,$(MAKEFLAGS)))
 XECHO = echo
 else
 XECHO = :
+endif
+
+ifeq ($(strip $(verbose)),)
+MAKEFLAGS += --no-print-directory
+silent=@
+export silent
 endif
 
 #########################################################################
@@ -124,6 +123,12 @@ ifneq ($(OBJTREE),$(SRCTREE))
 REMOTE_BUILD	:= 1
 export REMOTE_BUILD
 endif
+
+ifndef PRODUCT
+PRODUCT=EX7500
+endif
+export PRODUCT
+$(shell cp product/$(PRODUCT)/uboot_config.h $(TOPDIR)/include/uboot_config.h)
 
 # $(obj) and (src) are defined in config.mk but here in main Makefile
 # we also need them before config.mk is included which is the case for
@@ -347,7 +352,7 @@ endif
 else
 PLATFORM_LIBGCC := -L $(shell dirname `$(CC) $(CFLAGS) -print-libgcc-file-name`) -lgcc
 endif
-PLATFORM_LIBS = $(PLATFORM_LIBGCC)
+PLATFORM_LIBS += $(PLATFORM_LIBGCC)
 export PLATFORM_LIBS
 
 # Special flags for CPP when processing the linker script.
@@ -389,7 +394,6 @@ ONENAND_BIN ?= $(obj)onenand_ipl/onenand-ipl-2k.bin
 ALL-$(CONFIG_SPL) += $(obj)spl/u-boot-spl.bin
 ALL-$(CONFIG_OF_SEPARATE) += $(obj)u-boot.dtb $(obj)u-boot-dtb.bin
 ALL-$(CONFIG_MBN_HEADER) += $(obj)u-boot.mbn
-ALL-$(CONFIG_BLS_FIT_IMAGE) += $(obj)u-boot_$(shell echo $(CONFIG_FLASH_TYPE)).img
 
 all:		$(ALL-y) $(SUBDIR_EXAMPLES)
 
@@ -404,14 +408,14 @@ $(obj)u-boot.hex:	$(obj)u-boot
 		$(OBJCOPY) ${OBJCFLAGS} -O ihex $< $@
 
 $(obj)u-boot.srec:	$(obj)u-boot
-		$(OBJCOPY) -O srec $< $@
+		@$(call compile,$(OBJCOPY) -O srec $< $@)
 
 $(obj)u-boot.bin:	$(obj)u-boot
-		$(OBJCOPY) ${OBJCFLAGS} -O binary $< $@
+		@$(call compile,$(OBJCOPY) ${OBJCFLAGS} -O binary $< $@)
 		$(BOARD_SIZE_CHECK)
 
 $(obj)u-boot.mbn:	$(obj)u-boot.bin
-		python tools/mkheader.py $(CONFIG_SYS_TEXT_BASE) $(CONFIG_IPQ_APPSBL_IMG_TYPE) $< $@
+		@$(call compile,python tools/mkheader.py $(CONFIG_SYS_TEXT_BASE) $(CONFIG_IPQ_APPSBL_IMG_TYPE) $< $@)
 
 $(obj)u-boot.ldr:	$(obj)u-boot
 		$(CREATE_LDR_ENV)
@@ -430,19 +434,6 @@ $(obj)u-boot.img:	$(obj)u-boot.bin
 		-n $(shell sed -n -e 's/.*U_BOOT_VERSION//p' $(VERSION_FILE) | \
 			sed -e 's/"[	 ]*$$/ for $(BOARD) board"/') \
 		-d $< $@
-
-$(obj)u-boot.elf:	$(obj)u-boot
-		@cp -f $< $@
-		@strip $@
-
-$(obj)u-boot_%.img:	$(obj)u-boot.elf
-		python tools/pack.py -t $* -B -F boardconfig -o ../$@ tools/$(shell echo $(CONFIG_MODEL))
-
-$(obj)u-boot_%.trx: $(obj)u-boot_%.img
-		$(obj)tools/mkimage -A $(ARCH) -T firmware -C none \
-		-O u-boot -a $(CONFIG_SYS_TEXT_BASE) -e 0 \
-		-n "U-Boot image" -d $< $@ && \
-		$(obj)tools/addmg -f $(shell printf "%d" $(CONFIG_MAX_BL_BINARY_SIZE)) -d $@
 
 $(obj)u-boot.imx:       $(obj)u-boot.bin
 		$(obj)tools/mkimage -n  $(CONFIG_IMX_CONFIG) -T imximage \
@@ -514,7 +505,8 @@ endif
 
 $(obj)u-boot:	depend \
 		$(SUBDIR_TOOLS) $(OBJS) $(LIBBOARD) $(LIBS) $(LDSCRIPT) $(obj)u-boot.lds
-		$(GEN_UBOOT)
+		@echo -e "$(CYN)Linking$(GRN) $@...$(NRM)"
+		$(silent)$(GEN_UBOOT)
 ifeq ($(CONFIG_KALLSYMS),y)
 		smap=`$(call SYSTEM_MAP,u-boot) | \
 			awk '$$2 ~ /[tTwW]/ {printf $$1 $$3 "\\\\000"}'` ; \
@@ -541,7 +533,7 @@ $(LDSCRIPT):	depend
 		$(MAKE) -C $(dir $@) $(notdir $@)
 
 $(obj)u-boot.lds: $(LDSCRIPT)
-		$(CPP) $(CPPFLAGS) $(LDPPFLAGS) -ansi -D__ASSEMBLY__ -P - <$^ >$@
+		@$(call compile,$(CPP) $(CPPFLAGS) $(LDPPFLAGS) -ansi -D__ASSEMBLY__ -P - <$^ >$@)
 
 nand_spl:	$(TIMESTAMP_FILE) $(VERSION_FILE) depend
 		$(MAKE) -C nand_spl/board/$(BOARDDIR) all
@@ -567,7 +559,7 @@ depend dep:	$(TIMESTAMP_FILE) $(VERSION_FILE) \
 		$(obj)include/autoconf.mk \
 		$(obj)include/generated/generic-asm-offsets.h \
 		$(obj)include/generated/asm-offsets.h
-		for dir in $(SUBDIRS) $(CPUDIR) $(LDSCRIPT_MAKEFILE_DIR) ; do \
+		$(silent)for dir in $(SUBDIRS) $(CPUDIR) $(LDSCRIPT_MAKEFILE_DIR) ; do \
 			$(MAKE) -C $$dir _depend ; done
 
 TAG_SUBDIRS = $(SUBDIRS)
@@ -582,9 +574,8 @@ checkstack:
 			`$(FIND) $(obj) -name u-boot-spl -print` | \
 			perl $(src)tools/checkstack.pl $(ARCH)
 
-.PHONY : tags ctags etags cscope
 tags ctags:
-		ctags -w -o $(obj)$@ `$(FIND) $(FINDFLAGS) $(TAG_SUBDIRS) \
+		ctags -w -o $(obj)ctags `$(FIND) $(FINDFLAGS) $(TAG_SUBDIRS) \
 						-name '*.[chS]' -print`
 
 etags:
@@ -633,23 +624,23 @@ $(obj)include/autoconf.mk: $(obj)include/config.h
 $(obj)include/generated/generic-asm-offsets.h:	$(obj)include/autoconf.mk.dep \
 	$(obj)lib/asm-offsets.s
 	@$(XECHO) Generating $@
-	tools/scripts/make-asm-offsets $(obj)lib/asm-offsets.s $@
+	@$(call compile,tools/scripts/make-asm-offsets $(obj)lib/asm-offsets.s $@)
 
 $(obj)lib/asm-offsets.s:	$(obj)include/autoconf.mk.dep \
 	$(src)lib/asm-offsets.c
 	@mkdir -p $(obj)lib
-	$(CC) -DDO_DEPS_ONLY \
+	@$(call compile,$(CC) -DDO_DEPS_ONLY \
 		$(CFLAGS) $(CFLAGS_$(BCURDIR)/$(@F)) $(CFLAGS_$(BCURDIR)) \
-		-o $@ $(src)lib/asm-offsets.c -c -S
+		-o $@ $(src)lib/asm-offsets.c -c -S)
 
 $(obj)include/generated/asm-offsets.h:	$(obj)include/autoconf.mk.dep \
 	$(obj)$(CPUDIR)/$(SOC)/asm-offsets.s
 	@$(XECHO) Generating $@
-	tools/scripts/make-asm-offsets $(obj)$(CPUDIR)/$(SOC)/asm-offsets.s $@
+	@$(call compile,tools/scripts/make-asm-offsets $(obj)$(CPUDIR)/$(SOC)/asm-offsets.s $@)
 
 $(obj)$(CPUDIR)/$(SOC)/asm-offsets.s:	$(obj)include/autoconf.mk.dep
 	@mkdir -p $(obj)$(CPUDIR)/$(SOC)
-	if [ -f $(src)$(CPUDIR)/$(SOC)/asm-offsets.c ];then \
+	$(silent)if [ -f $(src)$(CPUDIR)/$(SOC)/asm-offsets.c ];then \
 		$(CC) -DDO_DEPS_ONLY -DDO_SOC_DEPS_ONLY \
 		$(CFLAGS) $(CFLAGS_$(BCURDIR)/$(@F)) $(CFLAGS_$(BCURDIR)) \
 			-o $@ $(src)$(CPUDIR)/$(SOC)/asm-offsets.c -c -S; \
@@ -672,7 +663,7 @@ endif	# config.mk
 
 $(VERSION_FILE):
 		@mkdir -p $(dir $(VERSION_FILE))
-		@( localvers='$(shell $(TOPDIR)/tools/setlocalversion $(TOPDIR)/../../..)' ; \
+		@( localvers='$(shell $(TOPDIR)/tools/setlocalversion $(TOPDIR))' ; \
 		   printf '#define PLAIN_VERSION "%s%s"\n' \
 			"$(U_BOOT_VERSION)" "$${localvers}" ; \
 		   printf '#define U_BOOT_VERSION "U-Boot %s%s"\n' \
@@ -807,8 +798,8 @@ tidy:	clean
 	@find $(OBJTREE) -type f \( -name '*.depend*' \) -print | xargs rm -f
 
 clobber:	tidy
-	@find $(OBJTREE) \( -name '*partition.bin' -o -name "smem.bin" \) -prune -o \
-		-type f \( -name '*.srec' -o -name '*.bin' -o -name u-boot.img \) \
+	@find $(OBJTREE) -type f \( -name '*.srec' \
+		-o -name '*.bin' -o -name u-boot.img \) \
 		-print0 | xargs -0 rm -f
 	@rm -f $(OBJS) $(obj)*.bak $(obj)ctags $(obj)etags $(obj)TAGS \
 		$(obj)cscope.* $(obj)*.*~

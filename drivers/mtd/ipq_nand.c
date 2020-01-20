@@ -497,24 +497,6 @@ struct nand_ecclayout fake_ecc_layout;
 
 #define NAND_READY_TIMEOUT      100000 /* 1 SEC */
 
-/* Always enable skip-bad-block mechanism.
- * 0: no limits
- * otherwise: erase/read/write can't exceed this offset.
- */
-static loff_t max_addr = 0;
-
-void ranand_set_sbb_max_addr(loff_t addr)
-{
-	struct mtd_info *mtd = &nand_info[nand_curr_device];
-
-	if (!mtd || addr > mtd->size) {
-		max_addr = 0;
-		return;
-	}
-
-	max_addr = addr;
-}
-
 /*
  * The flash buffer does not like byte accesses. A plain memcpy might
  * perform byte access, which can clobber the data to the
@@ -702,8 +684,11 @@ static int ipq_check_read_status(struct mtd_info *mtd, uint32_t status)
 
 	debug("Read Status: %08x\n", status);
 
-	cw_erased = readl(&regs->erased_cw_detect_status);
-	cw_erased &= CODEWORD_ERASED_MASK;
+	/* Hardware handles erased page detection for BCH */
+	if (dev->dev_cfg1 & ENABLE_BCH_ECC(1)) {
+		cw_erased = readl(&regs->erased_cw_detect_status);
+		cw_erased &= CODEWORD_ERASED_MASK;
+	}
 
 	num_errors = readl(&regs->buffer_status);
 	num_errors &= NUM_ERRORS_MASK;
@@ -711,8 +696,10 @@ static int ipq_check_read_status(struct mtd_info *mtd, uint32_t status)
 	if (status & MPU_ERROR_MASK)
 		return -EPERM;
 
-	if ((status & OP_ERR_MASK) && !cw_erased)
+	if ((status & OP_ERR_MASK) && !cw_erased) {
 		mtd->ecc_stats.failed++;
+		return -EBADMSG;
+	}
 
 	if (num_errors)
 		mtd->ecc_stats.corrected++;
@@ -882,7 +869,7 @@ static u_long ipq_get_read_page_count(struct mtd_info *mtd,
  * user buffer is insufficient to hold one page worth of OOB data,
  * return an internal buffer, to hold the data temporarily.
  */
-static uint8_t *ipq_nand_read_oobbuf(struct mtd_info *mtd, struct mtd_oob_ops *ops, u_long skip_bytes)
+static uint8_t *ipq_nand_read_oobbuf(struct mtd_info *mtd, struct mtd_oob_ops *ops)
 {
 	size_t read_ooblen;
 	struct ipq_nand_dev *dev = MTD_IPQ_NAND_DEV(mtd);
@@ -891,7 +878,7 @@ static uint8_t *ipq_nand_read_oobbuf(struct mtd_info *mtd, struct mtd_oob_ops *o
 		return NULL;
 
 	read_ooblen = ops->ooblen - ops->oobretlen;
-	if (read_ooblen < dev->oob_per_page || skip_bytes)
+	if (read_ooblen < dev->oob_per_page)
 		return dev->pad_oob;
 
 	return ops->oobbuf + ops->oobretlen;
@@ -902,7 +889,7 @@ static uint8_t *ipq_nand_read_oobbuf(struct mtd_info *mtd, struct mtd_oob_ops *o
  * the user buffer is insufficient to hold one page worth of in-band
  * data, return an internal buffer, to hold the data temporarily.
  */
-static uint8_t *ipq_nand_read_datbuf(struct mtd_info *mtd, struct mtd_oob_ops *ops, u_long skip_bytes)
+static uint8_t *ipq_nand_read_datbuf(struct mtd_info *mtd, struct mtd_oob_ops *ops)
 {
 	size_t read_datlen;
 	struct ipq_nand_dev *dev = MTD_IPQ_NAND_DEV(mtd);
@@ -911,7 +898,7 @@ static uint8_t *ipq_nand_read_datbuf(struct mtd_info *mtd, struct mtd_oob_ops *o
 		return NULL;
 
 	read_datlen = ops->len - ops->retlen;
-	if (read_datlen < mtd->writesize || skip_bytes)
+	if (read_datlen < mtd->writesize)
 		return dev->pad_dat;
 
 	return ops->datbuf + ops->retlen;
@@ -921,7 +908,7 @@ static uint8_t *ipq_nand_read_datbuf(struct mtd_info *mtd, struct mtd_oob_ops *o
  * Copy the OOB data from the internal buffer, to the user buffer, if
  * the internal buffer was used for the read.
  */
-static void ipq_nand_read_oobcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops, u_long skip_bytes)
+static void ipq_nand_read_oobcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops)
 {
 	size_t ooblen;
 	size_t read_ooblen;
@@ -933,7 +920,7 @@ static void ipq_nand_read_oobcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops,
 	read_ooblen = ops->ooblen - ops->oobretlen;
 	ooblen = MIN(read_ooblen, dev->oob_per_page);
 
-	if (read_ooblen < dev->oob_per_page || skip_bytes)
+	if (read_ooblen < dev->oob_per_page)
 		memcpy(ops->oobbuf + ops->oobretlen, dev->pad_oob, ooblen);
 
 	ops->oobretlen += ooblen;
@@ -943,7 +930,7 @@ static void ipq_nand_read_oobcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops,
  * Copy the in-band data from the internal buffer, to the user buffer,
  * if the internal buffer was used for the read.
  */
-static void ipq_nand_read_datcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops, u_long skip_bytes)
+static void ipq_nand_read_datcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops)
 {
 	size_t datlen;
 	size_t read_datlen;
@@ -955,19 +942,19 @@ static void ipq_nand_read_datcopy(struct mtd_info *mtd, struct mtd_oob_ops *ops,
 	read_datlen = ops->len - ops->retlen;
 	datlen = MIN(read_datlen, mtd->writesize);
 
-	if (read_datlen < mtd->writesize || skip_bytes)
-		memcpy(ops->datbuf + ops->retlen, dev->pad_dat + skip_bytes, datlen);
+	if (read_datlen < mtd->writesize)
+		memcpy(ops->datbuf + ops->retlen, dev->pad_dat, datlen);
 
-	ops->retlen += datlen - skip_bytes;
+	ops->retlen += datlen;
 }
 
 static int ipq_nand_read_oob(struct mtd_info *mtd, loff_t from,
 			     struct mtd_oob_ops *ops)
 {
-	u_long start, skip_bytes;
+	u_long start;
 	u_long pages;
 	u_long i;
-	uint32_t corrected, failed;
+	uint32_t corrected;
 	struct nand_chip *chip = MTD_NAND_CHIP(mtd);
 	struct ipq_nand_dev *dev = MTD_IPQ_NAND_DEV(mtd);
 	int ret = 0;
@@ -980,6 +967,9 @@ static int ipq_nand_read_oob(struct mtd_info *mtd, loff_t from,
 	if (ops->datbuf && (from + ops->len) > mtd->size)
 		return -EINVAL;
 
+	if (from & (mtd->writesize - 1))
+		return -EINVAL;
+
 	if (ops->ooboffs != 0)
 		return -EINVAL;
 
@@ -987,32 +977,21 @@ static int ipq_nand_read_oob(struct mtd_info *mtd, loff_t from,
 		ipq_enter_raw_mode(mtd);
 
 	start = from >> chip->page_shift;
-	skip_bytes = from - (start << chip->page_shift);
 	pages = ipq_get_read_page_count(mtd, ops);
 
 	debug("Start of page: %lu\n", start);
 	debug("No of pages to read: %lu\n", pages);
 
-	failed = mtd->ecc_stats.failed;
 	corrected = mtd->ecc_stats.corrected;
 
 	for (i = start; i < (start + pages); i++) {
-		ulong addr = i << chip->page_shift;
 		struct mtd_oob_ops page_ops;
-		uint32_t c = mtd->ecc_stats.corrected, f = mtd->ecc_stats.failed;
-
-		if (max_addr && addr >= max_addr) {
-			printf("%s: %lx exceed max_addr %lx\n",
-				__func__, addr, (ulong) max_addr);
-			ret = -ENOSPC;
-			break;
-		}
 
 		page_ops.mode = ops->mode;
 		page_ops.len = mtd->writesize;
 		page_ops.ooblen = dev->oob_per_page;
-		page_ops.datbuf = ipq_nand_read_datbuf(mtd, ops, skip_bytes);
-		page_ops.oobbuf = ipq_nand_read_oobbuf(mtd, ops, skip_bytes);
+		page_ops.datbuf = ipq_nand_read_datbuf(mtd, ops);
+		page_ops.oobbuf = ipq_nand_read_oobbuf(mtd, ops);
 		page_ops.retlen = 0;
 		page_ops.oobretlen = 0;
 
@@ -1020,18 +999,10 @@ static int ipq_nand_read_oob(struct mtd_info *mtd, loff_t from,
 		if (ret < 0)
 			goto done;
 
-		ipq_nand_read_datcopy(mtd, ops, skip_bytes);
-		ipq_nand_read_oobcopy(mtd, ops, skip_bytes);
-		skip_bytes = 0;
-
-		if (mtd->ecc_stats.failed > f)
-			printf("%s: uncorrectable error @ page 0x%lx\n", __func__, i);
-		else if (mtd->ecc_stats.corrected > c)
-			printf("%s: correctable error @ page 0x%lx\n", __func__, i);
+		ipq_nand_read_datcopy(mtd, ops);
+		ipq_nand_read_oobcopy(mtd, ops);
 	}
 
-	if (mtd->ecc_stats.failed != failed)
-		ret = -EBADMSG;
 	if (mtd->ecc_stats.corrected != corrected)
 		ret = -EUCLEAN;
 
@@ -1165,7 +1136,7 @@ static uint8_t *ipq_nand_write_oobbuf(struct mtd_info *mtd, struct mtd_oob_ops *
 		return dev->pad_oob;
 
 	write_ooblen = ops->ooblen - ops->oobretlen;
-	memset(dev->pad_oob, 0xFF, dev->oob_per_page);
+	memset(dev->pad_oob, dev->oob_per_page, 0xFF);
 
 	if (write_ooblen < dev->oob_per_page) {
 		memcpy(dev->pad_oob, ops->oobbuf + ops->oobretlen, write_ooblen);
@@ -1241,15 +1212,7 @@ static int ipq_nand_write_oob(struct mtd_info *mtd, loff_t to,
 	ops->oobretlen = 0;
 
 	for (i = start; i < (start + pages); i++) {
-		ulong addr = i << chip->page_shift;
 		struct mtd_oob_ops page_ops;
-
-		if (max_addr && addr >= max_addr) {
-			printf("%s: %lx exceed max_addr %lx\n",
-				__func__, addr, (ulong) max_addr);
-			ret = -ENOSPC;
-			break;
-		}
 
 		page_ops.mode = ops->mode;
 		page_ops.len = mtd->writesize;
@@ -1309,7 +1272,7 @@ static int ipq_nand_block_isbad(struct mtd_info *mtd, loff_t offs)
 	ops.mode = MTD_OOB_RAW;
 	ops.len = 0;
 	ops.retlen = 0;
-	ops.ooblen = 1;				/* small page is not supported */
+	ops.ooblen = 1;
 	ops.oobretlen = 0;
 	ops.ooboffs = 0;
 	ops.datbuf = NULL;
@@ -1324,7 +1287,7 @@ static int ipq_nand_block_isbad(struct mtd_info *mtd, loff_t offs)
 
 static int ipq_nand_block_markbad(struct mtd_info *mtd, loff_t offs)
 {
-	int ret, ret1;
+	int ret;
 	struct mtd_oob_ops ops;
 	struct ipq_nand_dev *dev = MTD_IPQ_NAND_DEV(mtd);
 
@@ -1334,15 +1297,6 @@ static int ipq_nand_block_markbad(struct mtd_info *mtd, loff_t offs)
 
 	if (offs & (mtd->erasesize - 1))
 		return -EINVAL;
-
-	if ((ret = nand_erase_scrub(mtd, offs, mtd->erasesize)) != 0 ) {
-		printf("erase offset %lx fail. (ret %d)\n", (ulong)offs, ret);
-		return ret;
-	}
-	/* make sure zero_page and zero_oob is all zero, except bad-block indication byte. */
-	memset(dev->zero_page, 0, mtd->writesize);
-	memset(dev->zero_oob, 0, mtd->oobsize);
-	*dev->zero_oob = SW_BAD_BLOCK_INDICATION;	/* small page is not supported */
 
 	ops.mode = MTD_OOB_RAW;
 	ops.len = mtd->writesize;
@@ -1354,13 +1308,9 @@ static int ipq_nand_block_markbad(struct mtd_info *mtd, loff_t offs)
 	ops.oobbuf = dev->zero_oob;
 
 	ret = ipq_nand_write_oob(mtd, offs, &ops);
-	offs += mtd->writesize;
-	ret1 = ipq_nand_write_oob(mtd, offs, &ops);
 
-	if (!ret || !ret1) {
+	if (!ret)
 		mtd->ecc_stats.badblocks++;
-		ret = 0;
-	}
 
 	return ret;
 }
@@ -1420,11 +1370,6 @@ static int ipq_nand_erase(struct mtd_info *mtd, struct erase_info *instr)
 		if (!instr->scrub && ipq_nand_block_isbad(mtd, offs)) {
 			debug("ipq_nand: attempt to erase a bad block");
 			return -EIO;
-		} else if (max_addr && i >= max_addr) {
-			printf("%s: %lx exceed max_addr %lx\n",
-				__func__, i, (ulong) max_addr);
-			ret = -ENOSPC;
-			break;
 		}
 
 		ret = ipq_nand_erase_block(mtd, i);
@@ -1884,7 +1829,7 @@ int ipq_nand_post_scan_init(struct mtd_info *mtd, enum ipq_nand_layout layout)
 	struct nand_chip *chip = MTD_NAND_CHIP(mtd);
 	struct nand_onfi_params *nand_onfi = MTD_ONFI_PARAMS(mtd);
 	int ret = 0;
-	u_char *buf;
+	char *buf;
 
 	alloc_size = (mtd->writesize   /* For dev->pad_dat */
 		      + mtd->oobsize   /* For dev->pad_oob */

@@ -34,19 +34,20 @@
 #include <configs/ipq40xx_cdp.h>
 #include <asm/u-boot.h>
 #include <phy.h>
-#include "../common/qca_common.h"
+#include "qca_common.h"
 
 #define NO_OF_DBG_UART_GPIOS	2
 #ifdef CONFIG_IPQ40XX_I2C
 #define NO_OF_I2C_GPIOS		2
 #endif
+#define MAX_CONF_NAME		5
 
 unsigned int smem_get_board_machtype(void);
 
 #define IPQ40XX_EDMA_DEV	1
 typedef struct {
 	uint count;
-	u8 addr[16];
+	u8 addr[7];
 } ipq40xx_edma_phy_addr_t;
 
 /* ipq40xx edma Paramaters */
@@ -56,7 +57,7 @@ typedef struct {
 	uint mac_conn_to_phy;
 	phy_interface_t phy;
 	ipq40xx_edma_phy_addr_t phy_addr;
-	char phy_name[MDIO_NAME_LEN];
+	const char phy_name[MDIO_NAME_LEN];
 } ipq40xx_edma_board_cfg_t;
 
 typedef struct {
@@ -119,17 +120,18 @@ typedef struct {
 	uart_cfg_t *uart_cfg;
 	uart_cfg_t *console_uart_cfg;
 #ifdef CONFIG_IPQ40XX_I2C
-	i2c_cfg_t *i2c_cfg;
+	i2c_cfg_t *i2c0_cfg;
+	i2c_cfg_t *i2c1_cfg;
 #endif
 	gpio_func_data_t *mmc_gpio;
 	unsigned int mmc_gpio_count;
 	unsigned int spi_nand_available;
 	unsigned int nor_nand_available;
 	unsigned int nor_emmc_available;
-	const char *dtb_config_name;
 #ifdef CONFIG_IPQ40XX_PCI
 	pcie_params_t pcie_cfg[PCI_MAX_DEVICES];
 #endif
+	const char *dtb_config_name[MAX_CONF_NAME];
 } __attribute__ ((__packed__)) board_ipq40xx_params_t;
 
 extern board_ipq40xx_params_t *gboard_param;

@@ -223,11 +223,9 @@ static int netboot_common(enum proto_t proto, cmd_tbl_t *cmdtp, int argc,
 			copy_filename(BootFile, argv[1], sizeof(BootFile));
 		break;
 
-	case 3:
-		load_addr = simple_strtoul(argv[1], NULL, 16);
+	case 3:	load_addr = simple_strtoul(argv[1], NULL, 16);
 		copy_filename (BootFile, argv[2], sizeof(BootFile));
-		debug("load addr= 0x%08lx\n", load_addr);
-		debug("boot file= %s\n", BootFile);
+
 		break;
 
 #ifdef CONFIG_CMD_TFTPPUT
@@ -240,7 +238,6 @@ static int netboot_common(enum proto_t proto, cmd_tbl_t *cmdtp, int argc,
 		copy_filename(BootFile, argv[3], sizeof(BootFile));
 		break;
 #endif
-
 	default:
 		bootstage_error(BOOTSTAGE_ID_NET_START);
 		return CMD_RET_USAGE;
@@ -251,7 +248,6 @@ static int netboot_common(enum proto_t proto, cmd_tbl_t *cmdtp, int argc,
 		bootstage_error(BOOTSTAGE_ID_NET_NETLOOP_OK);
 		return 1;
 	}
-	printf("NetBootFileXferSize= %08x\n", size);
 	bootstage_mark(BOOTSTAGE_ID_NET_NETLOOP_OK);
 
 	/* NetLoop ok, update environment */

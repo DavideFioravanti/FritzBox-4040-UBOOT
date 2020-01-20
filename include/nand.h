@@ -41,8 +41,6 @@ extern void nand_init(void);
 #include <linux/mtd/mtd.h>
 #include <linux/mtd/nand.h>
 
-#define SW_BAD_BLOCK_INDICATION	0x33
-
 #ifdef CONFIG_SYS_NAND_SELF_INIT
 void board_nand_init(void);
 int nand_register(int devnum);
@@ -78,19 +76,6 @@ static inline int nand_erase(nand_info_t *info, loff_t off, size_t size)
 	instr.addr = off;
 	instr.len = size;
 	instr.callback = 0;
-
-	return info->erase(info, &instr);
-}
-
-static inline int nand_erase_scrub(nand_info_t *info, loff_t off, size_t size)
-{
-	struct erase_info instr;
-
-	instr.mtd = info;
-	instr.addr = off;
-	instr.len = size;
-	instr.callback = 0;
-	instr.scrub = 1;	/* skip bad-block checking. */
 
 	return info->erase(info, &instr);
 }

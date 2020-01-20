@@ -44,12 +44,16 @@
 
 #ifdef CONFIG_IPQ40XX_I2C
 #define GCC_BLSP1_QUP1_I2C_APPS_CFG_RCGR	0x01802010
+#define GCC_BLSP1_QUP2_I2C_APPS_CFG_RCGR	0x01803004
 
 #define GCC_BLSP1_QUP1_I2C_APPS_M		0x0180303C
 #define GCC_BLSP1_QUP1_I2C_APPS_N		0x01803040
 #define GCC_BLSP1_QUP1_I2C_APPS_D		0x01803044
 #define GCC_BLSP1_QUP1_I2C_APPS_CMD_RCGR	0x0180200C
 #define GCC_BLSP1_QUP1_I2C_APPS_CBCR		0x01802008
+
+#define GCC_BLSP1_QUP2_I2C_APPS_CMD_RCGR	0x01803000
+#define GCC_BLSP1_QUP2_I2C_APPS_CBCR		0x01803010
 
 #define GCC_I2C_CFG_RCGR_SRCSEL_MASK	0x0700
 #define GCC_I2C_CFG_RCGR_SRCDIV_MASK	0x001F
@@ -89,10 +93,13 @@ void uart2_configure_mux(void);
 
 /* I2C clocks configuration */
 #ifdef CONFIG_IPQ40XX_I2C
-void i2c_clock_config(void);
+void i2c_clock_config(unsigned int bus_num);
 void i2c0_toggle_clock(void);
 int i2c0_trigger_update(void);
 void i2c0_configure_mux(void);
+void i2c1_toggle_clock(void);
+int i2c1_trigger_update(void);
+void i2c1_configure_mux(void);
 #endif
 
 int pcie_clock_enable(int clk_addr);

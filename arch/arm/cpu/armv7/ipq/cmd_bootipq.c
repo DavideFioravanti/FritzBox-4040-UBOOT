@@ -107,7 +107,7 @@ static int load_nss_img(const char *runcmd, char *args, int argslen,
  */
 static int set_fs_bootargs(int *fs_on_nand)
 {
-	char *bootargs = NULL;
+	char *bootargs;
 #ifdef CONFIG_IPQ_MMC
 	char emmc_rootfs[30];
 	block_dev_desc_t *blk_dev = mmc_get_dev(host->dev_num);
@@ -178,7 +178,7 @@ static int set_fs_bootargs(int *fs_on_nand)
  * Inovke the dump routine and in case of failure, do not stop unless the user
  * requested to stop
  */
-static int inline do_dumpipq_data(void)
+static int inline do_dumpipq_data()
 {
 	uint64_t etime;
 
@@ -458,9 +458,9 @@ static int do_bootipq(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 #endif
 	char runcmd[256];
 	int nandid = 0, ret;
+	unsigned int active_part = 0;
 
 #ifdef CONFIG_IPQ_MMC
-	unsigned int active_part = 0;
 	block_dev_desc_t *blk_dev = mmc_get_dev(host->dev_num);
 	disk_partition_t disk_info;
 #endif

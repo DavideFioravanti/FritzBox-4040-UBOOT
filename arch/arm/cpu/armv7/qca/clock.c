@@ -174,12 +174,66 @@ void i2c0_toggle_clock(void)
 	writel(cbcr_val, GCC_BLSP1_QUP1_I2C_APPS_CBCR);
 }
 
-void i2c_clock_config(void)
+void i2c1_configure_mux(void)
 {
-	i2c0_configure_mux();
-	i2c0_trigger_update();
-	i2c0_toggle_clock();
+	unsigned long cfg_rcgr;
+
+	cfg_rcgr = readl(GCC_BLSP1_QUP2_I2C_APPS_CFG_RCGR);
+	/* Clear mode, src sel, src div */
+	cfg_rcgr &= ~(GCC_I2C_CFG_RCGR_SRCSEL_MASK |
+			GCC_I2C_CFG_RCGR_SRCDIV_MASK);
+
+	cfg_rcgr |= ((I2C0_RCGR_SRC_SEL << GCC_I2C_CFG_RCGR_SRCSEL_SHIFT)
+			& GCC_UART_CFG_RCGR_SRCSEL_MASK);
+
+	cfg_rcgr |= ((I2C0_RCGR_SRC_DIV << GCC_I2C_CFG_RCGR_SRCDIV_SHIFT)
+			& GCC_UART_CFG_RCGR_SRCDIV_MASK);
+
+	writel(cfg_rcgr, GCC_BLSP1_QUP2_I2C_APPS_CFG_RCGR);
 }
+
+int i2c1_trigger_update(void)
+{
+	unsigned long cmd_rcgr;
+	int timeout = 0;
+
+	cmd_rcgr = readl(GCC_BLSP1_QUP2_I2C_APPS_CMD_RCGR);
+	cmd_rcgr |= I2C0_CMD_RCGR_UPDATE;
+	writel(cmd_rcgr, GCC_BLSP1_QUP2_I2C_APPS_CMD_RCGR);
+
+	while (readl(GCC_BLSP1_QUP2_I2C_APPS_CMD_RCGR) & I2C0_CMD_RCGR_UPDATE) {
+		if (timeout++ >= CLOCK_UPDATE_TIMEOUT_US) {
+			printf("Timeout waiting for I2C0 clock update\n");
+			return -ETIMEDOUT;
+		}
+		udelay(1);
+	}
+	cmd_rcgr = readl(GCC_BLSP1_QUP2_I2C_APPS_CMD_RCGR);
+	return 0;
+}
+
+void i2c1_toggle_clock(void)
+{
+	unsigned long cbcr_val;
+
+	cbcr_val = readl(GCC_BLSP1_QUP2_I2C_APPS_CBCR);
+	cbcr_val |= I2C0_CBCR_CLK_ENABLE;
+	writel(cbcr_val, GCC_BLSP1_QUP2_I2C_APPS_CBCR);
+}
+
+void i2c_clock_config(unsigned int i2c_bus_num)
+ {
+	if (i2c_bus_num == 0) {
+		i2c0_configure_mux();
+		i2c0_trigger_update();
+		i2c0_toggle_clock();
+	} else {
+		i2c1_configure_mux();
+		i2c1_trigger_update();
+		i2c1_toggle_clock();
+	}
+ }
+ 
 #endif
 
 int pcie_clock_enable(int clk_addr)

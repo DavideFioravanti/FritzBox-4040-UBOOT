@@ -171,7 +171,7 @@ int main(int argc, char **argv)
 
 	params.cmdname = *argv;
 
-	while ((opt = getopt(argc, argv, "c:li:o:p:V")) != -1) {
+	while ((opt = getopt(argc, argv, "li:o:p:V")) != -1) {
 		switch (opt) {
 		case 'l':
 			params.lflag = 1;
@@ -195,9 +195,6 @@ int main(int argc, char **argv)
 		case 'V':
 			printf("dumpimage version %s\n", PLAIN_VERSION);
 			exit(EXIT_SUCCESS);
-		case 'c':
-			return do_board_upgrade_check(optarg);
-			break;
 		default:
 			usage();
 		}
@@ -303,10 +300,6 @@ static void usage(void)
 		params.cmdname);
 	fprintf(stderr,
 		"       %s -V ==> print version information and exit\n",
-		params.cmdname);
-	fprintf(stderr,
-		"       %s -c image\n"
-		"          -c ==> do board upgrade check\n",
 		params.cmdname);
 
 	exit(EXIT_FAILURE);

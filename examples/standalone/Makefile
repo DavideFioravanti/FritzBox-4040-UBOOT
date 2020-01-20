@@ -26,7 +26,7 @@ include $(TOPDIR)/config.mk
 ELF-$(ARCH)  :=
 ELF-$(BOARD) :=
 ELF-$(CPU)   :=
-ELF-y        := hello_world ubi_sysupgrade
+ELF-y        := hello_world
 
 ELF-$(CONFIG_SMC91111)           += smc91111_eeprom
 ELF-$(CONFIG_SMC911X)            += smc911x_eeprom
@@ -47,7 +47,6 @@ ELF := $(strip $(ELF-y) $(ELF-$(ARCH)) $(ELF-$(BOARD)) $(ELF-$(CPU)))
 
 SREC := $(addsuffix .srec,$(ELF))
 BIN  := $(addsuffix .bin,$(ELF))
-APP  := $(addsuffix .app,$(ELF))
 
 COBJS	:= $(ELF:=.o)
 
@@ -83,25 +82,13 @@ CFLAGS := $(filter-out $(RELFLAGS),$(CFLAGS))
 CPPFLAGS := $(filter-out $(RELFLAGS),$(CPPFLAGS))
 endif
 
-ifdef USE_PRIVATE_LIBGCC
-ifeq ("$(USE_PRIVATE_LIBGCC)", "yes")
-PLATFORM_LIBGCC = $(OBJTREE)/arch/$(ARCH)/lib/libgcc.o
-else
-PLATFORM_LIBGCC = -L $(USE_PRIVATE_LIBGCC) -lgcc
-endif
-else
-PLATFORM_LIBGCC := -L $(shell dirname `$(CC) $(CFLAGS) -print-libgcc-file-name`) -lgcc
-endif
-PLATFORM_LIBS = $(PLATFORM_LIBGCC)
-export PLATFORM_LIBS
-
 # We don't want gcc reordering functions if possible.  This ensures that an
 # application's entry point will be the first function in the application's
 # source file.
 CFLAGS_NTR := $(call cc-option,-fno-toplevel-reorder)
-CFLAGS += $(CFLAGS_NTR) -ffunction-sections -DSTANDALONE_APP
+CFLAGS += $(CFLAGS_NTR)
 
-all:	$(obj).depend $(OBJS) $(LIB) $(SREC) $(BIN) $(APP) $(ELF)
+all:	$(obj).depend $(OBJS) $(LIB) $(SREC) $(BIN) $(ELF)
 
 #########################################################################
 $(LIB):	$(obj).depend $(LIBOBJS)
@@ -111,7 +98,7 @@ $(ELF):
 $(obj)%:	$(obj)%.o $(LIB)
 		$(LD) $(LDFLAGS) -g -Ttext $(CONFIG_STANDALONE_LOAD_ADDR) \
 			-o $@ -e $(SYM_PREFIX)$(notdir $(<:.o=)) $< $(LIB) \
-			$(PLATFORM_LIBGCC)
+			-L$(gcclibdir) -lgcc
 
 $(SREC):
 $(obj)%.srec:	$(obj)%
@@ -120,15 +107,6 @@ $(obj)%.srec:	$(obj)%
 $(BIN):
 $(obj)%.bin:	$(obj)%
 		$(OBJCOPY) -O binary $< $@ 2>/dev/null
-
-$(APP):
-$(obj)%.app:	$(obj)%
-	{ \
-	$(OBJCOPY) -O binary $< $@ 2>/dev/null; \
-	gzip --best --force $@; \
-	mkimage -e $(CONFIG_STANDALONE_LOAD_ADDR) -a $(CONFIG_STANDALONE_LOAD_ADDR) -A $(ARCH) -T standalone -O u-boot -C gzip -d $@.gz $@; \
-	rm -f $@.gz; \
-	}
 
 #########################################################################
 

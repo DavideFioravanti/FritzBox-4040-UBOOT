@@ -25,8 +25,6 @@
 #endif
 
 static struct spi_flash *flash;
-static uint8_t __bounce_buf[0x10000] __attribute__((aligned(4))), *bounce_buf = __bounce_buf;
-static ulong bounce_buf_size = sizeof(__bounce_buf);
 
 
 /*
@@ -195,11 +193,10 @@ static int do_spi_flash_read_write(int argc, char * const argv[])
 {
 	unsigned long addr;
 	unsigned long offset;
-	unsigned long len, l = 0, o;
+	unsigned long len;
 	void *buf;
 	char *endp;
-	int ret = 0;
-	int (*func)(struct spi_flash*, u32, size_t, void*) = NULL;
+	int ret;
 
 	if (argc < 4)
 		return -1;
@@ -212,11 +209,6 @@ static int do_spi_flash_read_write(int argc, char * const argv[])
 		return -1;
 	len = simple_strtoul(argv[3], &endp, 16);
 	if (*argv[3] == 0 || *endp != 0)
-		return -1;
-
-	if (addr < CONFIG_SYS_SDRAM_BASE)
-		return -1;
-	if ((offset + len) > flash->size)
 		return -1;
 
 	buf = map_physmem(addr, len, MAP_WRBACK);
@@ -228,80 +220,9 @@ static int do_spi_flash_read_write(int argc, char * const argv[])
 	if (strcmp(argv[0], "update") == 0)
 		ret = spi_flash_update(flash, offset, len, buf);
 	else if (strcmp(argv[0], "read") == 0)
-		func = spi_flash_read;
+		ret = spi_flash_read(flash, offset, len, buf);
 	else
-		func = (int (*)(struct spi_flash*, u32, size_t, void*)) spi_flash_write;
-
-	for (o = offset; func && len > 0; o += l, buf += l, len -= l) {
-		l = min(len, flash->sector_size);
-		if ((ret = func(flash, o, l, buf)) != 0)
-			break;
-		putc('.');
-	}
-
-	unmap_physmem(buf, len);
-
-	if (ret) {
-		printf("SPI flash %s failed\n", argv[0]);
-		return 1;
-	}
-
-	return 0;
-}
-
-static int do_spi_flash_prog(int argc, char * const argv[])
-{
-	unsigned long addr;
-	unsigned long offset;
-	unsigned long len;
-	unsigned long l = 0, o, o1, m;
-	void *buf;
-	char *endp;
-	int ret = 0, piece;
-	uint8_t *p;
-
-	if (argc < 4)
-		return -1;
-
-	addr = simple_strtoul(argv[1], &endp, 16);
-	if (*argv[1] == 0 || *endp != 0)
-		return -1;
-	offset = simple_strtoul(argv[2], &endp, 16);
-	if (*argv[2] == 0 || *endp != 0)
-		return -1;
-	len = simple_strtoul(argv[3], &endp, 16);
-	if (*argv[3] == 0 || *endp != 0)
-		return -1;
-
-	if (addr < CONFIG_SYS_SDRAM_BASE)
-		return -1;
-	if ((offset + len) > flash->size)
-		return -1;
-	buf = map_physmem(addr, len, MAP_WRBACK);
-	if (!buf) {
-		puts("Failed to map physical memory\n");
-		return 1;
-	}
-
-	m = ~(flash->sector_size - 1);
-	for (o = offset; len > 0; o += l, len -= l, buf += l) {
-		p = buf;
-		l = min(len, flash->sector_size);
-		o1 = o & m;
-		if (o1 != o || l < flash->sector_size) {
-			if ((ret = spi_flash_read(flash, o1, flash->sector_size, bounce_buf)) != 0)
-				break;
-			piece = o - o1;
-			l = min(l, flash->sector_size - piece);
-			memcpy(bounce_buf + piece, buf, l);
-			p = bounce_buf;
-		}
-		if ((ret = spi_flash_erase(flash, o1, flash->sector_size)) != 0)
-			break;
-		if ((ret = spi_flash_write(flash, o1, flash->sector_size, p)) != 0)
-			break;
-		printf(".");
-	}
+		ret = spi_flash_write(flash, offset, len, buf);
 
 	unmap_physmem(buf, len);
 
@@ -331,9 +252,6 @@ static int do_spi_flash_erase(int argc, char * const argv[])
 	if (ret != 1)
 		return -1;
 
-	if ((offset + len) > flash->size)
-		return -1;
-
 	ret = spi_flash_erase(flash, offset, len);
 	if (ret) {
 		printf("SPI flash %s failed\n", argv[0]);
@@ -359,7 +277,7 @@ static int do_spi_flash_berase(int argc, char * const argv[])
 	return 1;
 }
 
-int do_spi_flash(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
+static int do_spi_flash(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 {
 	const char *cmd;
 	int ret;
@@ -374,19 +292,6 @@ int do_spi_flash(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 
 	if (strcmp(cmd, "probe") == 0) {
 		ret = do_spi_flash_probe(argc, argv);
-		if (flash && flash->sector_size > bounce_buf_size) {
-			if (bounce_buf != __bounce_buf) {
-				free(bounce_buf);
-				bounce_buf_size = 0;
-			}
-			bounce_buf = malloc(flash->sector_size);
-			if (!bounce_buf) {
-				printf("%s: Malloc bounce buffer fail! (flash sector size %x)\n",
-					__func__, flash->sector_size);
-				bounce_buf = __bounce_buf;
-				bounce_buf_size = sizeof(__bounce_buf);
-			}
-		}
 		goto done;
 	}
 
@@ -403,8 +308,6 @@ int do_spi_flash(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		ret = do_spi_flash_erase(argc, argv);
 	else if (strcmp(cmd, "bulkerase") == 0)
 		ret = do_spi_flash_berase(argc, argv);
-	else if (!strcmp(cmd, "prog"))
-		ret = do_spi_flash_prog(argc, argv);
 	else
 		ret = -1;
 
@@ -421,8 +324,6 @@ U_BOOT_CMD(
 	"SPI flash sub-system",
 	"probe [[bus:]cs] [hz] [mode]	- init flash device on given SPI bus\n"
 	"				  and chip select\n"
-	"sf prog addr offset len	- erase and write `len' bytes from `offset'\n"
-	"				  both `offset' and `len' can be non sector-aligned\n"
 	"sf read addr offset len 	- read `len' bytes starting at\n"
 	"				  `offset' to memory at `addr'\n"
 	"sf write addr offset len	- write `len' bytes from memory\n"

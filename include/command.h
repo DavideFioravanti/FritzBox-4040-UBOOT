@@ -102,7 +102,6 @@ extern int cmd_get_data_size(char* arg, int default_size);
 extern int do_bootd(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
 #endif
 #ifdef CONFIG_CMD_BOOTM
-
 extern int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]);
 extern int bootm_maybe_autostart(cmd_tbl_t *cmdtp, const char *cmd);
 #else

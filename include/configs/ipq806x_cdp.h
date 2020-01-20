@@ -71,8 +71,6 @@
 #define CONFIG_MSM_PCOMM
 #define CONFIG_ARCH_CPU_INIT
 
-#define CONFIG_UART_GSBI4
-#define CONFIG_SWITCH_QCA8337
 #define CONFIG_ENV_SIZE_MAX             (256 << 10) /* 256 KB */
 #define CONFIG_SYS_MALLOC_LEN           (CONFIG_ENV_SIZE_MAX + (256 << 10))
 
@@ -133,7 +131,6 @@
 #define CONFIG_CMD_PCI
 #define CONFIG_PCI_SCAN_SHOW
 #endif
-
 #define CONFIG_IPQ_MMC
 
 #ifdef CONFIG_IPQ_MMC

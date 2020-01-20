@@ -30,11 +30,11 @@
  * @pnum: physical eraseblock number
  * @lnum: logical eraseblock number
  * @scrub: if this physical eraseblock needs scrubbing
- * @copy_flag: this LEB is a copy (@copy_flag is set in VID header of this LEB)
  * @sqnum: sequence number
  * @u: unions RB-tree or @list links
  * @u.rb: link in the per-volume RB-tree of &struct ubi_scan_leb objects
  * @u.list: link in one of the eraseblock lists
+ * @leb_ver: logical eraseblock version (obsolete)
  *
  * One object of this type is allocated for each physical eraseblock during
  * scanning.
@@ -43,13 +43,13 @@ struct ubi_scan_leb {
 	int ec;
 	int pnum;
 	int lnum;
-	unsigned int scrub:1;
-	unsigned int copy_flag:1;
+	int scrub;
 	unsigned long long sqnum;
 	union {
 		struct rb_node rb;
 		struct list_head list;
 	} u;
+	uint32_t leb_ver;
 };
 
 /**
@@ -59,16 +59,16 @@ struct ubi_scan_leb {
  * @leb_count: number of logical eraseblocks in this volume
  * @vol_type: volume type
  * @used_ebs: number of used logical eraseblocks in this volume (only for
- *            static volumes)
+ * static volumes)
  * @last_data_size: amount of data in the last logical eraseblock of this
- *                  volume (always equivalent to the usable logical eraseblock
- *                  size in case of dynamic volumes)
+ * volume (always equivalent to the usable logical eraseblock size in case of
+ * dynamic volumes)
  * @data_pad: how many bytes at the end of logical eraseblocks of this volume
- *            are not used (due to volume alignment)
+ * are not used (due to volume alignment)
  * @compat: compatibility flags of this volume
  * @rb: link in the volume RB-tree
  * @root: root of the RB-tree containing all the eraseblock belonging to this
- *        volume (&struct ubi_scan_leb objects)
+ * volume (&struct ubi_scan_leb objects)
  *
  * One object of this type is allocated for each volume during scanning.
  */
@@ -92,16 +92,11 @@ struct ubi_scan_volume {
  * @free: list of free physical eraseblocks
  * @erase: list of physical eraseblocks which have to be erased
  * @alien: list of physical eraseblocks which should not be used by UBI (e.g.,
- *         those belonging to "preserve"-compatible internal volumes)
- * @corr_peb_count: count of PEBs in the @corr list
- * @empty_peb_count: count of PEBs which are presumably empty (contain only
- *                   0xFF bytes)
- * @alien_peb_count: count of PEBs in the @alien list
  * @bad_peb_count: count of bad physical eraseblocks
- * @maybe_bad_peb_count: count of bad physical eraseblocks which are not marked
- *                       as bad yet, but which look like bad
+ * those belonging to "preserve"-compatible internal volumes)
  * @vols_found: number of volumes found during scanning
  * @highest_vol_id: highest volume ID
+ * @alien_peb_count: count of physical eraseblocks in the @alien list
  * @is_empty: flag indicating whether the MTD device is empty or not
  * @min_ec: lowest erase counter value
  * @max_ec: highest erase counter value
@@ -111,8 +106,8 @@ struct ubi_scan_volume {
  * @ec_count: a temporary variable used when calculating @mean_ec
  *
  * This data structure contains the result of scanning and may be used by other
- * UBI sub-systems to build final UBI data structures, further error-recovery
- * and so on.
+ * UBI units to build final UBI data structures, further error-recovery and so
+ * on.
  */
 struct ubi_scan_info {
 	struct rb_root volumes;
@@ -120,13 +115,10 @@ struct ubi_scan_info {
 	struct list_head free;
 	struct list_head erase;
 	struct list_head alien;
-	int corr_peb_count;
-	int empty_peb_count;
-	int alien_peb_count;
 	int bad_peb_count;
-	int maybe_bad_peb_count;
 	int vols_found;
 	int highest_vol_id;
+	int alien_peb_count;
 	int is_empty;
 	int min_ec;
 	int max_ec;
@@ -140,10 +132,11 @@ struct ubi_device;
 struct ubi_vid_hdr;
 
 /*
- * ubi_scan_move_to_list - move a PEB from the volume tree to a list.
+ * ubi_scan_move_to_list - move a physical eraseblock from the volume tree to a
+ * list.
  *
  * @sv: volume scanning information
- * @seb: scanning eraseblock information
+ * @seb: scanning eraseblock infprmation
  * @list: the list to move to
  */
 static inline void ubi_scan_move_to_list(struct ubi_scan_volume *sv,

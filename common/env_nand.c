@@ -39,10 +39,6 @@
 #include <search.h>
 #include <errno.h>
 
-#ifdef crc32
-#undef crc32
-#endif
-
 #if defined(CONFIG_CMD_SAVEENV) && defined(CONFIG_CMD_NAND)
 #define CMD_SAVEENV
 #elif defined(CONFIG_ENV_OFFSET_REDUND)
@@ -231,24 +227,6 @@ int nand_saveenv(void)
 	return ret;
 }
 #else /* ! CONFIG_ENV_OFFSET_REDUND */
-int nand_eraseenv(void)
-{
-	nand_erase_options_t nand_erase_options;
-
-	memset(&nand_erase_options, 0, sizeof(nand_erase_options));
-	nand_erase_options.length = CONFIG_ENV_RANGE;
-	nand_erase_options.offset = CONFIG_ENV_OFFSET;
-
-	if (CONFIG_ENV_RANGE < CONFIG_ENV_SIZE)
-		return 1;
-
-	if (nand_erase_opts(&nand_info[nand_env_device],
-			    &nand_erase_options))
-		return 1;
-
-	return 0;
-}
-
 int nand_saveenv(void)
 {
 	int	ret = 0;

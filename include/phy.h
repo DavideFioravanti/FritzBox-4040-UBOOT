@@ -106,7 +106,6 @@ struct mii_dev {
 	int (*reset)(struct mii_dev *bus);
 	struct phy_device *phymap[PHY_MAX_ADDR];
 	u32 phy_mask;
-	uint gmac_base;
 };
 
 /* struct phy_driver: a structure which defines PHY behavior

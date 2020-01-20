@@ -235,10 +235,4 @@ void app_startup(char * const *argv)
 #endif
 }
 
-void hang(void)
-{
-	printf("Internal error - execution stopped\n");
-	for(;;);
-}
-
 #undef EXPORT_FUNC

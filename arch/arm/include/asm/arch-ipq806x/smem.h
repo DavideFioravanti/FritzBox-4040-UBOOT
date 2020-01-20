@@ -53,7 +53,6 @@ int smem_get_boot_flash(uint32_t *flash_type,
 			uint32_t *flash_chip_select,
 			uint32_t *flash_block_size);
 int smem_getpart(char *name, uint32_t *start, uint32_t *size);
-extern int smem_listparts(void);
 unsigned int smem_get_board_machtype(void);
 int smem_ram_ptable_init(struct smem_ram_ptable *smem_ram_ptable);
 

@@ -48,12 +48,11 @@
  *     OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE,
  *     EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-#include "linux/libfdt_env.h"
+#include "libfdt_env.h"
 
 #ifndef USE_HOSTCC
-#include <stdint.h>
-#include <linux/fdt.h>
-#include <linux/libfdt.h>
+#include <fdt.h>
+#include <libfdt.h>
 #else
 #include "fdt_host.h"
 #endif

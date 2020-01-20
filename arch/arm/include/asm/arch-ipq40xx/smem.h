@@ -88,7 +88,6 @@ int smem_get_boot_flash(uint32_t *flash_type,
 			uint32_t *flash_block_size,
 			uint32_t *flash_density);
 int smem_getpart(char *name, uint32_t *start, uint32_t *size);
-extern int smem_listparts(void);
 unsigned int smem_get_board_machtype(void);
 uint32_t get_nand_block_size(uint8_t dev_id);
 unsigned int get_which_flash_param(char *part_name);
@@ -121,21 +120,20 @@ struct per_part_info
 {
 	char name[ALT_PART_NAME_LENGTH];
 	uint32_t primaryboot;
-	uint32_t upgraded;
 };
 
-#define NUM_ALT_PARTITION 3
+#define NUM_ALT_PARTITION 8
 typedef struct
 {
-#define _SMEM_DUAL_BOOTINFO_MAGIC       0xA5A3A1A0
+#define _SMEM_DUAL_BOOTINFO_MAGIC       0xA3A2A1A0
 	/* Magic number for identification when reading from flash */
 	uint32_t magic;
-	/* upgradeinprogress indicates to attempting the upgrade */
-	uint32_t    upgradeinprogress;
+	uint32_t age;
 	/* numaltpart indicate number of alt partitions */
 	uint32_t    numaltpart;
 
 	struct per_part_info per_part_entry[NUM_ALT_PARTITION];
+	uint32_t magic_end;
 } qca_smem_bootconfig_info_t;
 
 extern qca_smem_bootconfig_info_t qca_smem_bootconfig_info;

@@ -15,7 +15,6 @@
 #define __UBOOT_UBI_H
 
 #include <common.h>
-#include <command.h>
 #include <compiler.h>
 #include <malloc.h>
 #include <div64.h>
@@ -215,8 +214,6 @@ static inline long IS_ERR(const void *ptr)
 extern int ubi_mtd_param_parse(const char *val, struct kernel_param *kp);
 extern int ubi_init(void);
 extern void ubi_exit(void);
-extern int do_ubi(cmd_tbl_t * cmdtp, int flag, int argc, char * const argv[]);
-extern struct ubi_device* get_ubi_device(void);
 
 extern struct ubi_device *ubi_devices[];
 

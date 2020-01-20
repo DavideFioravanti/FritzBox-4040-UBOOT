@@ -285,25 +285,6 @@ int smem_getpart(char *part_name, uint32_t *start, uint32_t *size)
 }
 
 /**
- * smem_listparts - list all partitions start and size
- */
-int smem_listparts(void)
-{
-	unsigned i;
-	struct smem_ptn *p = &smem_ptable.parts[0];
-	ipq_smem_flash_info_t *smem = &ipq_smem_flash_info;
-
-	printf("%-13s: %-8s %-8s\n", "name", "offset", "size");
-	for (i = 0; i < smem_ptable.len; i++, p++) {
-		printf("%-13s: %08x %08x\n", p->name,
-			p->start * smem->flash_block_size,
-			p->size * smem->flash_block_size);
-	}
-
-	return 0;
-}
-
-/**
  * smem_get_boot_flash - retreive the boot flash info
  * @flash_type: location where the flash type is to be stored
  * @flash_index: location where the flash index is to be stored
@@ -361,23 +342,11 @@ unsigned int smem_get_board_machtype(void)
 	struct smem_machid_info machid_info;
 	unsigned smem_status;
 	unsigned int machid = 0;
-	const unsigned int expected_machid =
-#if defined(CONFIG_REF_AP148_030)
-		0x1260;
-#elif defined(CONFIG_REF_AP161)
-		0x136c;
-#else
-		0;
-#endif
 
 	smem_status = smem_read_alloc_entry(SMEM_MACHID_INFO_LOCATION,
 					&machid_info, sizeof(machid_info));
 	if (!smem_status) {
 		machid = machid_info.machid;
-		if (expected_machid && machid != expected_machid) {
-			printf("smem: machine type 0x%x -> 0x%x\n", machid, expected_machid);
-			machid = expected_machid;
-		}
 		debug("setting 0x%x as machine type from smem\n", machid);
 	} else {
 		printf("smem: get machine type from smem failed\n");

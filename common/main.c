@@ -43,14 +43,16 @@
 #include <linux/ctype.h>
 #include <menu.h>
 
-#if defined(CONFIG_SILENT_CONSOLE) || defined(CONFIG_POST) || defined(CONFIG_CMDLINE_EDITING)
+#if defined(CONFIG_SILENT_CONSOLE) || defined(CONFIG_POST) || \
+	defined(CONFIG_CMDLINE_EDITING) || defined(CONFIG_IPQ_ETH_INIT_DEFER)
 DECLARE_GLOBAL_DATA_PTR;
 #endif
 
 /*
  * Board-specific Platform code can reimplement show_boot_progress () if needed
  */
-void inline show_boot_progress (int val) {}
+void __show_boot_progress (int val) {}
+void show_boot_progress (int val) __attribute__((weak, alias("__show_boot_progress")));
 
 #if defined(CONFIG_UPDATE_TFTP)
 int update_tftp (ulong addr);
@@ -254,6 +256,13 @@ int abortboot(int bootdelay)
 		printf("\b\b\b%2d ", bootdelay);
 	}
 
+#ifdef CONFIG_IPQ_ETH_INIT_DEFER
+	if (abort) {
+		puts("\nNet:   ");
+		eth_initialize(gd->bd);
+	}
+#endif
+
 	putc('\n');
 
 #ifdef CONFIG_SILENT_CONSOLE
@@ -379,7 +388,13 @@ void main_loop (void)
 # ifdef CONFIG_AUTOBOOT_KEYED
 		int prev = disable_ctrlc(1);	/* disable Control C checking */
 # endif
-
+        /* Foxconn Bob added start on 06/16/2016 for dual image. Set environment firmware_partition to 1, boot loader will load 2nd kernel+rootfs, otherwise, load 1st kernel+rootfs */
+        
+        char cmd[256];
+        sprintf(cmd, "set firmware_partition %d", run_command("firmware_partition", 0));
+        run_command(cmd, 0);
+        /* Foxconn Bob added end on 06/16/2016 for dual image */
+        
 		run_command(s, 0);
 
 # ifdef CONFIG_AUTOBOOT_KEYED
@@ -907,7 +922,7 @@ static int cread_line(const char *const prompt, char *buf, unsigned int *len,
  *		-1 if break
  *		-2 if timed out
  */
-int __readline (const char *const prompt, int show_buf)
+int readline (const char *const prompt)
 {
 	/*
 	 * If console_buffer isn't 0-length the user will be prompted to modify
@@ -919,7 +934,7 @@ int __readline (const char *const prompt, int show_buf)
 }
 
 
-int __readline_into_buffer(const char *const prompt, char *buffer, int timeout, int show_buf)
+int readline_into_buffer(const char *const prompt, char *buffer, int timeout)
 {
 	char *p = buffer;
 #ifdef CONFIG_CMDLINE_EDITING
@@ -958,14 +973,7 @@ int __readline_into_buffer(const char *const prompt, char *buffer, int timeout, 
 		plen = strlen (prompt);
 		puts (prompt);
 	}
-	if (show_buf) {
-		puts (p);
-		n = strlen(p);
-		col = plen + strlen(p);
-		p += strlen(p);
-	}
-	else
-		col = plen;
+	col = plen;
 
 	for (;;) {
 #ifdef CONFIG_BOOT_RETRY_TIME

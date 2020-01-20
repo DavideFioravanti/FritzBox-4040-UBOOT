@@ -97,46 +97,27 @@
 #define GSBI7_QUP_SW_RESET_REG		(GSBI7_QUP7_REG_BASE + 0x0000000c)
 
 #define CLK_CTL_REG_BASE		0x00900000
-#ifndef MSM_CLK_CTL_BASE
-#define MSM_CLK_CTL_BASE		CLK_CTL_REG_BASE
-#endif
 #define GSBIn_RESET_REG(n) \
 		(CLK_CTL_REG_BASE      + 0x000029dc + 32 * ((n)-1))
 
-#ifndef SFAB_AHB_S3_FCLK_CTL_REG
 #define SFAB_AHB_S3_FCLK_CTL_REG \
 		(CLK_CTL_REG_BASE      + 0x0000216c)
-#endif
-#ifndef CFPB_CLK_NS_REG
 #define CFPB_CLK_NS_REG \
 		(CLK_CTL_REG_BASE      + 0x0000264c)
-#endif
-#ifndef SFAB_CFPB_S_HCLK_CTL_REG
 #define SFAB_CFPB_S_HCLK_CTL_REG \
 		(CLK_CTL_REG_BASE      + 0x000026c0)
-#endif
-#ifndef CFPB_SPLITTER_HCLK_CTL_REG
 #define CFPB_SPLITTER_HCLK_CTL_REG \
 		(CLK_CTL_REG_BASE      + 0x000026e0)
-#endif
-#ifndef CFPB0_HCLK_CTL_REG
 #define CFPB0_HCLK_CTL_REG \
 		(CLK_CTL_REG_BASE      + 0x00002650)
-#endif
 #define CFPB2_HCLK_CTL_REG \
 		(CLK_CTL_REG_BASE      + 0x00002658)
-#ifndef GSBIn_HCLK_CTL_REG
 #define GSBIn_HCLK_CTL_REG(n) \
 		(CLK_CTL_REG_BASE      + 0x000029c0 + 32 * ((n)-1))
-#endif
-#ifndef GSBIn_QUP_APPS_NS_REG
 #define GSBIn_QUP_APPS_NS_REG(n) \
 	(CLK_CTL_REG_BASE      + 0x000029cc + 32 * ((n)-1))
-#endif
-#ifndef GSBIn_QUP_APPS_MD_REG
 #define GSBIn_QUP_APPS_MD_REG(n) \
 		(CLK_CTL_REG_BASE      + 0x000029c8 + 32 * ((n)-1))
-#endif
 #define CLK_HALT_CFPB_STATEB_REG \
 		(CLK_CTL_REG_BASE      + 0x00002fd0)
 

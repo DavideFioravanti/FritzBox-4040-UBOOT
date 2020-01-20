@@ -52,8 +52,6 @@
 #include "scan.h"
 #include "debug.h"
 
-#define MIN_AVAILABLE_PEB	30
-
 /* Maximum number of supported UBI devices */
 #define UBI_MAX_DEVICES 32
 
@@ -85,77 +83,37 @@
 #define UBI_IO_RETRIES 3
 
 /*
- * Length of the protection queue. The length is effectively equivalent to the
- * number of (global) erase cycles PEBs are protected from the wear-leveling
- * worker.
- */
-#define UBI_PROT_QUEUE_LEN 10
-
-/*
- * Error codes returned by the I/O sub-system.
+ * Error codes returned by the I/O unit.
  *
- * UBI_IO_FF: the read region of flash contains only 0xFFs
- * UBI_IO_FF_BITFLIPS: the same as %UBI_IO_FF, but also also there was a data
- *                     integrity error reported by the MTD driver
- *                     (uncorrectable ECC error in case of NAND)
- * UBI_IO_BAD_HDR: the EC or VID header is corrupted (bad magic or CRC)
- * UBI_IO_BAD_HDR_EBADMSG: the same as %UBI_IO_BAD_HDR, but also there was a
- *                         data integrity error reported by the MTD driver
- *                         (uncorrectable ECC error in case of NAND)
+ * UBI_IO_PEB_EMPTY: the physical eraseblock is empty, i.e. it contains only
+ * 0xFF bytes
+ * UBI_IO_PEB_FREE: the physical eraseblock is free, i.e. it contains only a
+ * valid erase counter header, and the rest are %0xFF bytes
+ * UBI_IO_BAD_EC_HDR: the erase counter header is corrupted (bad magic or CRC)
+ * UBI_IO_BAD_VID_HDR: the volume identifier header is corrupted (bad magic or
+ * CRC)
  * UBI_IO_BITFLIPS: bit-flips were detected and corrected
- *
- * Note, it is probably better to have bit-flip and ebadmsg as flags which can
- * be or'ed with other error code. But this is a big change because there are
- * may callers, so it does not worth the risk of introducing a bug
  */
 enum {
-	UBI_IO_FF = 1,
-	UBI_IO_FF_BITFLIPS,
-	UBI_IO_BAD_HDR,
-	UBI_IO_BAD_HDR_EBADMSG,
-	UBI_IO_BITFLIPS,
-};
-
-/*
- * Return codes of the 'ubi_eba_copy_leb()' function.
- *
- * MOVE_CANCEL_RACE: canceled because the volume is being deleted, the source
- *                   PEB was put meanwhile, or there is I/O on the source PEB
- * MOVE_SOURCE_RD_ERR: canceled because there was a read error from the source
- *                     PEB
- * MOVE_TARGET_RD_ERR: canceled because there was a read error from the target
- *                     PEB
- * MOVE_TARGET_WR_ERR: canceled because there was a write error to the target
- *                     PEB
- * MOVE_TARGET_BITFLIPS: canceled because a bit-flip was detected in the
- *                       target PEB
- * MOVE_RETRY: retry scrubbing the PEB
- */
-enum {
-	MOVE_CANCEL_RACE = 1,
-	MOVE_SOURCE_RD_ERR,
-	MOVE_TARGET_RD_ERR,
-	MOVE_TARGET_WR_ERR,
-	MOVE_TARGET_BITFLIPS,
-	MOVE_RETRY,
+	UBI_IO_PEB_EMPTY = 1,
+	UBI_IO_PEB_FREE,
+	UBI_IO_BAD_EC_HDR,
+	UBI_IO_BAD_VID_HDR,
+	UBI_IO_BITFLIPS
 };
 
 /**
  * struct ubi_wl_entry - wear-leveling entry.
- * @u.rb: link in the corresponding (free/used) RB-tree
- * @u.list: link in the protection queue
+ * @rb: link in the corresponding RB-tree
  * @ec: erase counter
  * @pnum: physical eraseblock number
  *
- * This data structure is used in the WL sub-system. Each physical eraseblock
- * has a corresponding &struct wl_entry object which may be kept in different
- * RB-trees. See WL sub-system for details.
+ * This data structure is used in the WL unit. Each physical eraseblock has a
+ * corresponding &struct wl_entry object which may be kept in different
+ * RB-trees. See WL unit for details.
  */
 struct ubi_wl_entry {
-	union {
-		struct rb_node rb;
-		struct list_head list;
-	} u;
+	struct rb_node rb;
 	int ec;
 	int pnum;
 };
@@ -169,10 +127,10 @@ struct ubi_wl_entry {
  * @mutex: read/write mutex to implement read/write access serialization to
  *         the (@vol_id, @lnum) logical eraseblock
  *
- * This data structure is used in the EBA sub-system to implement per-LEB
- * locking. When a logical eraseblock is being locked - corresponding
+ * This data structure is used in the EBA unit to implement per-LEB locking.
+ * When a logical eraseblock is being locked - corresponding
  * &struct ubi_ltree_entry object is inserted to the lock tree (@ubi->ltree).
- * See EBA sub-system for details.
+ * See EBA unit for details.
  */
 struct ubi_ltree_entry {
 	struct rb_node rb;
@@ -180,27 +138,6 @@ struct ubi_ltree_entry {
 	int lnum;
 	int users;
 	struct rw_semaphore mutex;
-};
-
-/**
- * struct ubi_rename_entry - volume re-name description data structure.
- * @new_name_len: new volume name length
- * @new_name: new volume name
- * @remove: if not zero, this volume should be removed, not re-named
- * @desc: descriptor of the volume
- * @list: links re-name entries into a list
- *
- * This data structure is utilized in the multiple volume re-name code. Namely,
- * UBI first creates a list of &struct ubi_rename_entry objects from the
- * &struct ubi_rnvol_req request object, and then utilizes this list to do all
- * the job.
- */
-struct ubi_rename_entry {
-	int new_name_len;
-	char new_name[UBI_VOL_NAME_MAX + 1];
-	int remove;
-	struct ubi_volume_desc *desc;
-	struct list_head list;
 };
 
 struct ubi_volume_desc;
@@ -278,7 +215,7 @@ struct ubi_volume {
 	int alignment;
 	int data_pad;
 	int name_len;
-	char name[UBI_VOL_NAME_MAX + 1];
+	char name[UBI_VOL_NAME_MAX+1];
 
 	int upd_ebs;
 	int ch_lnum;
@@ -297,7 +234,7 @@ struct ubi_volume {
 #ifdef CONFIG_MTD_UBI_GLUEBI
 	/*
 	 * Gluebi-related stuff may be compiled out.
-	 * Note: this should not be built into UBI but should be a separate
+	 * TODO: this should not be built into UBI but should be a separate
 	 * ubimtd driver which works on top of UBI and emulates MTD devices.
 	 */
 	struct ubi_volume_desc *gluebi_desc;
@@ -307,7 +244,8 @@ struct ubi_volume {
 };
 
 /**
- * struct ubi_volume_desc - UBI volume descriptor returned when it is opened.
+ * struct ubi_volume_desc - descriptor of the UBI volume returned when it is
+ * opened.
  * @vol: reference to the corresponding volume description object
  * @mode: open mode (%UBI_READONLY, %UBI_READWRITE, or %UBI_EXCLUSIVE)
  */
@@ -331,7 +269,6 @@ struct ubi_wl_entry;
  *                @vol->readers, @vol->writers, @vol->exclusive,
  *                @vol->ref_count, @vol->mapping and @vol->eba_tbl.
  * @ref_count: count of references on the UBI device
- * @image_seq: image sequence number recorded on EC headers
  *
  * @rsvd_pebs: count of reserved physical eraseblocks
  * @avail_pebs: count of available physical eraseblocks
@@ -340,13 +277,13 @@ struct ubi_wl_entry;
  * @beb_rsvd_level: normal level of PEBs reserved for bad PEB handling
  *
  * @autoresize_vol_id: ID of the volume which has to be auto-resized at the end
- *                     of UBI initialization
+ *                     of UBI ititializetion
  * @vtbl_slots: how many slots are available in the volume table
  * @vtbl_size: size of the volume table in bytes
  * @vtbl: in-RAM volume table copy
- * @device_mutex: protects on-flash volume table and serializes volume
- *                creation, deletion, update, re-size, re-name and set
- *                property
+ * @volumes_mutex: protects on-flash volume table and serializes volume
+ *                 changes, like creation, deletion, update, resize
+ *
  * @max_ec: current highest erase counter value
  * @mean_ec: current mean erase counter value
  *
@@ -356,20 +293,19 @@ struct ubi_wl_entry;
  * @alc_mutex: serializes "atomic LEB change" operations
  *
  * @used: RB-tree of used physical eraseblocks
- * @erroneous: RB-tree of erroneous used physical eraseblocks
  * @free: RB-tree of free physical eraseblocks
  * @scrub: RB-tree of physical eraseblocks which need scrubbing
- * @pq: protection queue (contain physical eraseblocks which are temporarily
- *      protected from the wear-leveling worker)
- * @pq_head: protection queue head
- * @wl_lock: protects the @used, @free, @pq, @pq_head, @lookuptbl, @move_from,
- * 	     @move_to, @move_to_put @erase_pending, @wl_scheduled, @works,
- * 	     @erroneous, and @erroneous_peb_count fields
+ * @prot: protection trees
+ * @prot.pnum: protection tree indexed by physical eraseblock numbers
+ * @prot.aec: protection tree indexed by absolute erase counter value
+ * @wl_lock: protects the @used, @free, @prot, @lookuptbl, @abs_ec, @move_from,
+ *           @move_to, @move_to_put @erase_pending, @wl_scheduled, and @works
+ *           fields
  * @move_mutex: serializes eraseblock moves
- * @work_sem: synchronizes the WL worker with use tasks
  * @wl_scheduled: non-zero if the wear-leveling was scheduled
  * @lookuptbl: a table to quickly find a &struct ubi_wl_entry object for any
  *             physical eraseblock
+ * @abs_ec: absolute erase counter
  * @move_from: physical eraseblock from where the data is being moved
  * @move_to: physical eraseblock where the data is being moved to
  * @move_to_put: if the "to" PEB was put
@@ -384,34 +320,28 @@ struct ubi_wl_entry;
  * @peb_size: physical eraseblock size
  * @bad_peb_count: count of bad physical eraseblocks
  * @good_peb_count: count of good physical eraseblocks
- * @corr_peb_count: count of corrupted physical eraseblocks (preserved and not
- *                  used by UBI)
- * @erroneous_peb_count: count of erroneous physical eraseblocks in @erroneous
- * @max_erroneous: maximum allowed amount of erroneous physical eraseblocks
  * @min_io_size: minimal input/output unit size of the underlying MTD device
  * @hdrs_min_io_size: minimal I/O unit size used for VID and EC headers
  * @ro_mode: if the UBI device is in read-only mode
  * @leb_size: logical eraseblock size
  * @leb_start: starting offset of logical eraseblocks within physical
- *             eraseblocks
+ * eraseblocks
  * @ec_hdr_alsize: size of the EC header aligned to @hdrs_min_io_size
  * @vid_hdr_alsize: size of the VID header aligned to @hdrs_min_io_size
  * @vid_hdr_offset: starting offset of the volume identifier header (might be
- *                  unaligned)
+ * unaligned)
  * @vid_hdr_aloffset: starting offset of the VID header aligned to
  * @hdrs_min_io_size
  * @vid_hdr_shift: contains @vid_hdr_offset - @vid_hdr_aloffset
  * @bad_allowed: whether the MTD device admits of bad physical eraseblocks or
  *               not
- * @nor_flash: non-zero if working on top of NOR flash
  * @mtd: MTD device descriptor
  *
  * @peb_buf1: a buffer of PEB size used for different purposes
  * @peb_buf2: another buffer of PEB size used for different purposes
- * @buf_mutex: protects @peb_buf1 and @peb_buf2
- * @ckvol_mutex: serializes static volume checking when opening
+ * @buf_mutex: proptects @peb_buf1 and @peb_buf2
  * @dbg_peb_buf: buffer of PEB size used for debugging
- * @dbg_buf_mutex: protects @dbg_peb_buf
+ * @dbg_buf_mutex: proptects @dbg_peb_buf
  */
 struct ubi_device {
 	struct cdev cdev;
@@ -422,7 +352,6 @@ struct ubi_device {
 	struct ubi_volume *volumes[UBI_MAX_VOLUMES+UBI_INT_VOL_COUNT];
 	spinlock_t volumes_lock;
 	int ref_count;
-	int image_seq;
 
 	int rsvd_pebs;
 	int avail_pebs;
@@ -433,30 +362,32 @@ struct ubi_device {
 	int vtbl_slots;
 	int vtbl_size;
 	struct ubi_vtbl_record *vtbl;
-	struct mutex device_mutex;
+	struct mutex volumes_mutex;
 
 	int max_ec;
-	/* Note, mean_ec is not updated run-time - should be fixed */
+	/* TODO: mean_ec is not updated run-time, fix */
 	int mean_ec;
 
-	/* EBA sub-system's stuff */
+	/* EBA unit's stuff */
 	unsigned long long global_sqnum;
 	spinlock_t ltree_lock;
 	struct rb_root ltree;
 	struct mutex alc_mutex;
 
-	/* Wear-leveling sub-system's stuff */
+	/* Wear-leveling unit's stuff */
 	struct rb_root used;
-	struct rb_root erroneous;
 	struct rb_root free;
 	struct rb_root scrub;
-	struct list_head pq[UBI_PROT_QUEUE_LEN];
-	int pq_head;
+	struct {
+		struct rb_root pnum;
+		struct rb_root aec;
+	} prot;
 	spinlock_t wl_lock;
 	struct mutex move_mutex;
 	struct rw_semaphore work_sem;
 	int wl_scheduled;
 	struct ubi_wl_entry **lookuptbl;
+	unsigned long long abs_ec;
 	struct ubi_wl_entry *move_from;
 	struct ubi_wl_entry *move_to;
 	int move_to_put;
@@ -466,15 +397,12 @@ struct ubi_device {
 	int thread_enabled;
 	char bgt_name[sizeof(UBI_BGT_NAME_PATTERN)+2];
 
-	/* I/O sub-system's stuff */
+	/* I/O unit's stuff */
 	long long flash_size;
 	int peb_count;
 	int peb_size;
 	int bad_peb_count;
 	int good_peb_count;
-	int corr_peb_count;
-	int erroneous_peb_count;
-	int max_erroneous;
 	int min_io_size;
 	int hdrs_min_io_size;
 	int ro_mode;
@@ -485,15 +413,14 @@ struct ubi_device {
 	int vid_hdr_offset;
 	int vid_hdr_aloffset;
 	int vid_hdr_shift;
-	unsigned int bad_allowed:1;
-	unsigned int nor_flash:1;
+	int bad_allowed;
 	struct mtd_info *mtd;
 
 	void *peb_buf1;
 	void *peb_buf2;
 	struct mutex buf_mutex;
 	struct mutex ckvol_mutex;
-#ifdef CONFIG_MTD_UBI_DEBUG_PARANOID
+#ifdef CONFIG_MTD_UBI_DEBUG
 	void *dbg_peb_buf;
 	struct mutex dbg_buf_mutex;
 #endif
@@ -509,15 +436,12 @@ extern struct mutex ubi_devices_mutex;
 /* vtbl.c */
 int ubi_change_vtbl_record(struct ubi_device *ubi, int idx,
 			   struct ubi_vtbl_record *vtbl_rec);
-int ubi_vtbl_rename_volumes(struct ubi_device *ubi,
-			    struct list_head *rename_list);
 int ubi_read_volume_table(struct ubi_device *ubi, struct ubi_scan_info *si);
 
 /* vmt.c */
 int ubi_create_volume(struct ubi_device *ubi, struct ubi_mkvol_req *req);
-int ubi_remove_volume(struct ubi_volume_desc *desc, int no_vtbl);
+int ubi_remove_volume(struct ubi_volume_desc *desc);
 int ubi_resize_volume(struct ubi_volume_desc *desc, int reserved_pebs);
-int ubi_rename_volumes(struct ubi_device *ubi, struct list_head *rename_list);
 int ubi_add_volume(struct ubi_device *ubi, struct ubi_volume *vol);
 void ubi_free_volume(struct ubi_device *ubi, struct ubi_volume *vol);
 
@@ -532,11 +456,9 @@ int ubi_more_leb_change_data(struct ubi_device *ubi, struct ubi_volume *vol,
 			     const void __user *buf, int count);
 
 /* misc.c */
-int ubi_calc_data_len(const struct ubi_device *ubi, const void *buf,
-		      int length);
+int ubi_calc_data_len(const struct ubi_device *ubi, const void *buf, int length);
 int ubi_check_volume(struct ubi_device *ubi, int vol_id);
 void ubi_calculate_reserved(struct ubi_device *ubi);
-int ubi_check_pattern(const void *buf, uint8_t patt, int size);
 
 /* gluebi.c */
 #ifdef CONFIG_MTD_UBI_GLUEBI
@@ -616,8 +538,7 @@ int ubi_major2num(int major);
 	for (rb = rb_first(root),                                            \
 	     pos = (rb ? container_of(rb, typeof(*pos), member) : NULL);     \
 	     rb;                                                             \
-	     rb = rb_next(rb),                                               \
-	     pos = (rb ? container_of(rb, typeof(*pos), member) : NULL))
+	     rb = rb_next(rb), pos = container_of(rb, typeof(*pos), member))
 
 /**
  * ubi_zalloc_vid_hdr - allocate a volume identifier header object.
@@ -693,7 +614,6 @@ static inline void ubi_ro_mode(struct ubi_device *ubi)
 	if (!ubi->ro_mode) {
 		ubi->ro_mode = 1;
 		ubi_warn("switch to read-only mode");
-		ubi_dbg_dump_stack();
 	}
 }
 

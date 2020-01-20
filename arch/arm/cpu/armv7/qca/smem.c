@@ -76,9 +76,10 @@ typedef enum {
 	SMEM_BOOT_FLASH_BLOCK_SIZE = 481,
 	SMEM_BOOT_FLASH_DENSITY = 482,
 	SMEM_PARTITION_TABLE_OFFSET = 483,
+	SMEM_BOOT_DUALPARTINFO = 484,
 	SMEM_FIRST_VALID_TYPE = SMEM_SPINLOCK_ARRAY,
-	SMEM_LAST_VALID_TYPE = SMEM_PARTITION_TABLE_OFFSET,
-	SMEM_MAX_SIZE = SMEM_PARTITION_TABLE_OFFSET + 1,
+	SMEM_LAST_VALID_TYPE = SMEM_BOOT_DUALPARTINFO,
+	SMEM_MAX_SIZE = SMEM_BOOT_DUALPARTINFO + 1,
 } smem_mem_type_t;
 
 struct smem_proc_comm {
@@ -227,6 +228,23 @@ int smem_ptable_init(void)
 	return 0;
 }
 
+/**
+ * smem_bootconfig_info - retrieve bootconfig flags
+ */
+int smem_bootconfig_info(void)
+{
+	unsigned ret;
+
+	ret = smem_read_alloc_entry(SMEM_BOOT_DUALPARTINFO,
+		&qca_smem_bootconfig_info, sizeof(qca_smem_bootconfig_info_t));
+	if (ret != 0)
+		return -ENOMSG;
+	if (qca_smem_bootconfig_info.magic != _SMEM_DUAL_BOOTINFO_MAGIC)
+		return -ENOMSG;
+
+	return 0;
+}
+
 unsigned int get_rootfs_active_partition(void)
 {
 	int i;
@@ -248,6 +266,7 @@ unsigned int get_partition_table_offset(void)
 	ret = smem_read_alloc_entry(SMEM_PARTITION_TABLE_OFFSET,
 					&primary_mibib, sizeof(uint32_t));
 	if (ret != 0) {
+		printf("smem: SMEM_PARTITION_TABLE_OFFSET not available\n");
 		primary_mibib = 0;
 	}
 
@@ -290,25 +309,6 @@ int smem_getpart(char *part_name, uint32_t *start, uint32_t *size)
 				sfi->flash_block_size) - p->start;
 	} else {
 		*size = p->size;
-	}
-
-	return 0;
-}
-
-/**
- * smem_listparts - list all partitions start and size
- */
-int smem_listparts(void)
-{
-	unsigned i;
-	struct smem_ptn *p = &smem_ptable.parts[0];
-	qca_smem_flash_info_t *smem = &qca_smem_flash_info;
-
-	printf("%-13s: %-8s %-8s\n", "name", "offset", "size");
-	for (i = 0; i < smem_ptable.len; i++, p++) {
-		printf("%-13s: %08x %08x\n", p->name,
-			p->start * smem->flash_block_size,
-			p->size * smem->flash_block_size);
 	}
 
 	return 0;

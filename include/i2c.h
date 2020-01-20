@@ -250,4 +250,21 @@ static inline void I2C_SET_BUS(unsigned int bus)
 		i2c_set_bus_num(bus);
 }
 
+typedef enum
+{
+    LED_LP5562_RED = 0,
+    LED_LP5562_GREEN,
+    LED_LP5562_BLUE,
+    LED_LP5562_WHITE,
+    LED_LP5562_AMBER,
+    LED_LP5562_CYAN,
+    LED_LP5562_MAGENTA,
+    LED_LP5562_ALL,
+    LED_LP5562_CUSTOM,
+    LED_LP5562_NUM
+} LED_LP5562_COLOR;
+
+
+int i2c_led_ctrl(unsigned int led_color, unsigned int led_action, unsigned int led_percent);
+
 #endif	/* _I2C_H_ */

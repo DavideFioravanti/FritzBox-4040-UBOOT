@@ -46,8 +46,8 @@
 #include <image.h>
 
 #if defined(CONFIG_FIT) || defined(CONFIG_OF_LIBFDT)
-#include <linux/fdt.h>
-#include <linux/libfdt.h>
+#include <fdt.h>
+#include <libfdt.h>
 #include <fdt_support.h>
 #endif
 
@@ -161,11 +161,9 @@ static const table_entry_t uimage_comp[] = {
 
 uint32_t crc32(uint32_t, const unsigned char *, uint);
 uint32_t crc32_wd(uint32_t, const unsigned char *, uint, uint);
-#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) /* || defined(USE_HOSTCC) */
+#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) || defined(USE_HOSTCC)
 static void genimg_print_time(time_t timestamp);
 #endif
-
-static inline char* get_addr_name(ulong addr) { return "image"; }
 
 /*****************************************************************************/
 /* Legacy format routines */
@@ -312,7 +310,7 @@ void image_print_contents(const void *ptr)
 #endif
 
 	printf("%sImage Name:   %.*s\n", p, IH_NMLEN, image_get_name(hdr));
-#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) /* || defined(USE_HOSTCC) */
+#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) || defined(USE_HOSTCC)
 	printf("%sCreated:      ", p);
 	genimg_print_time((time_t)image_get_time(hdr));
 #endif
@@ -510,7 +508,7 @@ void genimg_print_size(uint32_t size)
 #endif
 }
 
-#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) /* || defined(USE_HOSTCC) */
+#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) || defined(USE_HOSTCC)
 static void genimg_print_time(time_t timestamp)
 {
 #ifndef USE_HOSTCC
@@ -797,7 +795,7 @@ int boot_get_ramdisk(int argc, char * const argv[], bootm_headers_t *images,
 		uint8_t arch, ulong *rd_start, ulong *rd_end)
 {
 	ulong rd_addr, rd_load;
-	ulong rd_data = 0, rd_len = 0;
+	ulong rd_data, rd_len;
 	const image_header_t *rd_hdr;
 #ifdef CONFIG_SUPPORT_RAW_INITRD
 	char *end;
@@ -992,6 +990,7 @@ int boot_get_ramdisk(int argc, char * const argv[], bootm_headers_t *images,
 				return 1;
 			}
 			bootstage_mark(BOOTSTAGE_ID_FIT_RD_LOAD);
+
 			images->fit_hdr_rd = fit_hdr;
 			images->fit_uname_rd = fit_uname_ramdisk;
 			images->fit_noffset_rd = rd_noffset;
@@ -1896,7 +1895,7 @@ void fit_print_contents(const void *fit)
 	int count = 0;
 	int ret;
 	const char *p;
-#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) /* || defined(USE_HOSTCC) */
+#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) || defined(USE_HOSTCC)
 	time_t timestamp;
 #endif
 
@@ -1914,7 +1913,7 @@ void fit_print_contents(const void *fit)
 	else
 		printf("%s\n", desc);
 
-#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) /* || defined(USE_HOSTCC) */
+#if defined(CONFIG_TIMESTAMP) || defined(CONFIG_CMD_DATE) || defined(USE_HOSTCC)
 	ret = fit_get_timestamp(fit, 0, &timestamp);
 	printf("%sCreated:         ", p);
 	if (ret)

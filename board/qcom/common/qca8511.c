@@ -292,7 +292,7 @@ static int do_qca8511_pp_reg_read( cmd_tbl_t *cmdtp, int flag,
 
 	readval = qca8511_pp_reg_read(addr);
 
-	printf("WJL %s: addr=0x%08lx, readval=0x%08lx.\n\n",
+	printf("WJL %s: addr=0x%08x, readval=0x%08x.\n\n",
 			__func__, addr, readval);
 
 	return 0;
@@ -328,7 +328,7 @@ static int do_qca8511_pp_reg_write( cmd_tbl_t *cmdtp, int flag,
 	else
 		count = 1;
 
-	printf("WJL %s: addr=0x%08lx, writeval=0x%08lx.\n\n",
+	printf("WJL %s: addr=0x%08x, writeval=0x%08x.\n\n",
 			__func__,addr, writeval);
 
 	qca8511_pp_reg_write(addr, writeval);
@@ -360,8 +360,8 @@ static int do_qca8511_pp_phy_reg_read( cmd_tbl_t *cmdtp, int flag,
 
 	reg_val = qca8511_pp_phy_reg_read(phy_sel, phy_addr, reg_addr);
 
-	printf("WJL %s: phy_sel=0x%lx, phy_addr=0x%lx, reg_addr=0x%lx,"
-			"reg_val=0x%08lx, size=%d.\n\n",
+	printf("WJL %s: phy_sel=0x%x, phy_addr=0x%x, reg_addr=0x%x,"
+			"reg_val=0x%08x, size=%d.\n\n",
 		__func__, phy_sel, phy_addr, reg_addr, reg_val, size);
 
 	return 0;
@@ -390,8 +390,8 @@ static int do_qca8511_pp_phy_reg_write( cmd_tbl_t *cmdtp,
 	reg_addr = simple_strtoul(argv[3], NULL, 16);
 	reg_data = simple_strtoul(argv[4], NULL, 16);
 
-	printf("WJL %s: phy_sel=0x%lx, phy_addr=0x%lx, reg_addr=0x%lx,"
-			"reg_data=0x%08lx, size=%d.\n",
+	printf("WJL %s: phy_sel=0x%x, phy_addr=0x%x, reg_addr=0x%x,"
+			"reg_data=0x%08x, size=%d.\n",
 		__func__, phy_sel, phy_addr, reg_addr, reg_data, size);
 
 	qca8511_pp_phy_reg_write(phy_sel, phy_addr, reg_addr, reg_data);

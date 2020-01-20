@@ -47,8 +47,8 @@
 #endif
 
 #if defined(CONFIG_OF_LIBFDT)
-#include <linux/fdt.h>
-#include <linux/libfdt.h>
+#include <fdt.h>
+#include <libfdt.h>
 #include <fdt_support.h>
 #endif
 
@@ -61,10 +61,6 @@
 #ifdef CONFIG_LZO
 #include <linux/lzo.h>
 #endif /* CONFIG_LZO */
-
-#ifdef crc32
-#undef crc32
-#endif
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -216,6 +212,14 @@ static int bootm_start(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[]
 
 	/* get image parameters */
 	switch (genimg_get_format(os_hdr)) {
+	case IMAGE_FORMAT_LEGACY:
+		images.os.type = image_get_type(os_hdr);
+		images.os.comp = image_get_comp(os_hdr);
+		images.os.os = image_get_os(os_hdr);
+
+		images.os.end = image_get_image_end(os_hdr);
+		images.os.load = image_get_load(os_hdr);
+		break;
 #if defined(CONFIG_FIT)
 	case IMAGE_FORMAT_FIT:
 		if (fit_image_get_type(images.fit_hdr_os,
@@ -608,9 +612,8 @@ int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 			return do_bootm_subcommand(cmdtp, flag, argc, argv);
 	}
 
-	if (bootm_start(cmdtp, flag, argc, argv)) {
+	if (bootm_start(cmdtp, flag, argc, argv))
 		return 1;
-	}
 
 	/*
 	 * We have reached the point of no return: we are going to
@@ -688,13 +691,6 @@ int do_bootm(cmd_tbl_t *cmdtp, int flag, int argc, char * const argv[])
 		return 1;
 	}
 
-#ifdef CONFIG_IPQ806X_PCI
-	board_pci_deinit();
-#endif /* CONFIG_IPQ806X_PCI */
-#ifdef CONFIG_IPQ_MMC
-	board_mmc_deinit();
-#endif
-
 	arch_preboot_os();
 
 	boot_fn(0, argc, argv, &images);
@@ -716,7 +712,6 @@ int bootm_maybe_autostart(cmd_tbl_t *cmdtp, const char *cmd)
 		char *local_args[2];
 		local_args[0] = (char *)cmd;
 		local_args[1] = NULL;
-
 		printf("Automatic boot of image at addr 0x%08lX ...\n", load_addr);
 		return do_bootm(cmdtp, 0, 1, local_args);
 	}

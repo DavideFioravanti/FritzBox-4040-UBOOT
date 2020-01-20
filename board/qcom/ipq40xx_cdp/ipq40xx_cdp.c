@@ -1,6 +1,6 @@
 /*
  *
- * Copyright (c) 2015,2016 The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2016 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -57,6 +57,15 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
+#define ADSS_AUDIO_RXM_CBCR_REG			0x0770012C
+#define ADSS_AUDIO_RXB_CBCR_REG			0x0770010C
+#define ADSS_AUDIO_TXB_CBCR_REG			0x0770014C
+#define ADSS_AUDIO_SPDIF_CBCR_REG		0x07700154
+#define ADSS_AUDIO_SPDIF_DIV2_CBCR_REG		0x0770015C
+#define ADSS_AUDIO_TXM_CBCR_REG			0x0770016C
+#define ADSS_AUDIO_PCM_CBCR_REG			0x077001AC
+#define ADSS_AUDIO_SPDIF_IN_FAST_CBCR_REG	0x077001EC
+
 loff_t board_env_offset;
 loff_t board_env_range;
 loff_t board_env_size;
@@ -89,6 +98,8 @@ extern int ipq_spi_init(u16 idx);
 qca_mmc mmc_host;
 #endif
 
+extern int spi_nand_init(void);
+
 /*
  * Don't have this as a '.bss' variable. The '.bss' and '.rel.dyn'
  * sections seem to overlap.
@@ -112,13 +123,18 @@ qca_mmc mmc_host;
  */
 board_ipq40xx_params_t *gboard_param = (board_ipq40xx_params_t *)0xbadb0ad;
 
+#define DLOAD_DISABLE 0x1
+#define RESERVE_ADDRESS_START 0x87B00000 /*TZAPPS, SMEM and TZ Regions */
+#define RESERVE_ADDRESS_SIZE 0x500000
+
 #define SET_MAGIC 0x1
 #define CLEAR_MAGIC 0x0
 #define SCM_CMD_TZ_CONFIG_HW_FOR_RAM_DUMP_ID 0x9
 #define SCM_CMD_TZ_FORCE_DLOAD_ID 0x10
-
 #define BOOT_VERSION	0
 #define TZ_VERSION	1
+#define RD_FAST_BOOT_CONFIG	0x0005E02C
+
 /*******************************************************
  Function description: Board specific initialization.
  I/P : None
@@ -139,10 +155,9 @@ static board_ipq40xx_params_t *get_board_param(unsigned int machid)
 	for (;;);
 }
 
-
 int env_init(void)
 {
-	int ret = 0;
+	int ret;
 	qca_smem_flash_info_t sfi;
 
 	smem_get_boot_flash(&sfi.flash_type,
@@ -151,7 +166,6 @@ int env_init(void)
 				&sfi.flash_block_size,
 				&sfi.flash_density);
 
-#if 0
 	if (sfi.flash_type != SMEM_BOOT_MMC_FLASH) {
 		ret = nand_env_init();
 #ifdef CONFIG_QCA_MMC
@@ -159,7 +173,6 @@ int env_init(void)
 		ret = mmc_env_init();
 #endif
 	}
-#endif
 
 	return ret;
 }
@@ -174,7 +187,6 @@ void env_relocate_spec(void)
 				&sfi.flash_block_size,
 				&sfi.flash_density);
 
-#if 0
 	if (sfi.flash_type != SMEM_BOOT_MMC_FLASH) {
 		nand_env_relocate_spec();
 #ifdef CONFIG_QCA_MMC
@@ -182,27 +194,37 @@ void env_relocate_spec(void)
 		mmc_env_relocate_spec();
 #endif
 	}
-#endif
 
 };
+
+/*
+ * The audio block is out of reset by default due to which the
+ * audio clock blocks are also turned on. When audio TLMM is
+ * enabled in kernel, the clocks will also be available at the
+ * pins which causes pop noise during kernel bootup.
+ * To avoid this, the clocks are turned off in u-boot.
+ */
+static void disable_audio_clks(void)
+{
+	writel(0, ADSS_AUDIO_RXM_CBCR_REG);
+	writel(0, ADSS_AUDIO_RXB_CBCR_REG);
+	writel(0, ADSS_AUDIO_TXB_CBCR_REG);
+	writel(0, ADSS_AUDIO_SPDIF_CBCR_REG);
+	writel(0, ADSS_AUDIO_SPDIF_DIV2_CBCR_REG);
+	writel(0, ADSS_AUDIO_TXM_CBCR_REG);
+	writel(0, ADSS_AUDIO_PCM_CBCR_REG);
+	writel(0, ADSS_AUDIO_SPDIF_IN_FAST_CBCR_REG);
+}
 
 int board_init(void)
 {
 	int ret;
 	uint32_t start_blocks;
 	uint32_t size_blocks;
-
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 
 	gd->bd->bi_boot_params = QCA_BOOT_PARAMS_ADDR;
 	gd->bd->bi_arch_number = smem_get_board_platform_type();
-#ifdef CONFIG_AVM_MACHTYPE_OVERRIDE
-	/* 
-	 * Hack to override the machinetype, as otherwise
-	 * RGMII is not configured correctly
-	 */
-	gd->bd->bi_arch_number = CONFIG_AVM_MACHTYPE_OVERRIDE;
-#endif
 	gboard_param = get_board_param(gd->bd->bi_arch_number);
 
 	ret = smem_get_boot_flash(&sfi->flash_type,
@@ -237,9 +259,6 @@ int board_init(void)
 	}
 
 	if (sfi->flash_type != SMEM_BOOT_MMC_FLASH) {
-		board_env_range = CONFIG_ENV_SIZE;
-		board_env_size = CONFIG_ENV_SIZE;
-
 		ret = smem_getpart("0:APPSBLENV", &start_blocks, &size_blocks);
 		if (ret < 0) {
 			printf("cdp: get environment part failed\n");
@@ -276,14 +295,15 @@ int board_init(void)
 		env_name_spec = mmc_env_name_spec;
 #endif
 	}
+
+	if (gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK04_1_C2)
+		disable_audio_clks();
+
 	return 0;
 }
 
 void qca_get_part_details(void)
 {
-	smem_listparts();
-
-#if 0
 	int ret, i;
 	uint32_t start;         /* block number */
 	uint32_t size;          /* no. of blocks */
@@ -307,13 +327,13 @@ void qca_get_part_details(void)
 		}
 	}
 
-#endif
 	return;
 }
 
 int board_late_init(void)
 {
 	unsigned int machid;
+	unsigned int flash_type;
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
 
 	if (sfi->flash_type != SMEM_BOOT_MMC_FLASH) {
@@ -323,6 +343,9 @@ int board_late_init(void)
 	/* get machine type from SMEM and set in env */
 	machid = gd->bd->bi_arch_number;
 	printf("machid: %x\n", machid);
+	flash_type = ((readl(RD_FAST_BOOT_CONFIG) & 0x1E ) >> 1);
+	setenv_addr("flash_type", (void *)flash_type);
+	printf("flash_type: %d\n", flash_type);
 	if (machid != 0) {
 		setenv_addr("machid", (void *)machid);
 		gd->bd->bi_arch_number = machid;
@@ -402,8 +425,11 @@ void board_nand_init(void)
 #else
 	if ((gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK04_1_C1) ||
 		(gboard_param->machid == MACH_TYPE_IPQ40XX_DB_DK02_1_C1) ||
-		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK04_1_C3) ||
-		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK06_1_C1)) {
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK06_1_C1) ||
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK07_1_C1) ||
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK07_1_C2) ||
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK04_1_C4) ||
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK04_1_C5)) {
 
 		struct qpic_nand_init_config config;
 		config.pipes.read_pipe = DATA_PRODUCER_PIPE;
@@ -428,18 +454,84 @@ void board_nand_init(void)
 			qca_configure_gpio(gpio,
 				gboard_param->spi_nor_gpio_count);
 		}
-		qpic_nand_init(&config);
+		if (gboard_param->nand_gpio)
+			qpic_nand_init(&config);
 	}
 #endif
+	if ((gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK01_1_C2) ||
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK05_1_C1) ||
+		(gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK04_1_C5)) {
+		spi_nand_init();
+	}
 
-#ifdef CONFIG_SPI_NAND_GIGA
-	spi_nand_init();
-#endif
-
+	if (gboard_param->machid != MACH_TYPE_IPQ40XX_AP_DK07_1_C2) {
 #ifdef CONFIG_IPQ40XX_SPI
-	ipq_spi_init(CONFIG_IPQ_SPI_NOR_INFO_IDX);
+		ipq_spi_init(CONFIG_IPQ_SPI_NOR_INFO_IDX);
 #endif
+	}
 }
+
+int read_board_data(uchar *board_data)
+{
+	s32 ret = 0 ;
+	u32 start_blocks;
+	u32 size_blocks;
+	u32 length = BD_SIZE;
+	u32 flash_type;
+	loff_t art_offset;
+	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
+#ifdef CONFIG_QCA_MMC
+	block_dev_desc_t *blk_dev;
+	disk_partition_t disk_info;
+	struct mmc *mmc;
+	char mmc_blks[512];
+#endif
+	if (sfi->flash_type != SMEM_BOOT_MMC_FLASH) {
+		if (qca_smem_flash_info.flash_type == SMEM_BOOT_SPI_FLASH)
+			flash_type = CONFIG_IPQ_SPI_NOR_INFO_IDX;
+		else if (qca_smem_flash_info.flash_type == SMEM_BOOT_NAND_FLASH)
+			flash_type = CONFIG_IPQ_NAND_NAND_INFO_IDX;
+		else {
+			printf("Unknown flash type\n");
+			return -EINVAL;
+		}
+
+		ret = smem_getpart("board_data", &start_blocks, &size_blocks);
+		if (ret < 0) {
+			printf("No board_data partition found\n");
+			return ret;
+		}
+		
+		art_offset =
+		((loff_t) qca_smem_flash_info.flash_block_size * start_blocks);
+
+		ret = nand_read_skip_bad(&nand_info[flash_type],
+				art_offset, &length, board_data);
+		if (ret < 0)
+			printf("board_data partition read failed..\n");
+#ifdef CONFIG_QCA_MMC
+	} else {
+		blk_dev = mmc_get_dev(mmc_host.dev_num);
+		ret = find_part_efi(blk_dev, "board_data", &disk_info);
+		/*
+		 * ART partition 0th position will contain MAC address.
+		 * Read 1 block.
+		 */
+		if (ret > 0) {
+			mmc = mmc_host.mmc;
+			ret = mmc->block_dev.block_read
+				(mmc_host.dev_num, disk_info.start,
+						1, mmc_blks);
+			memcpy(board_data, mmc_blks, length);
+                }
+		if (ret < 0)
+			printf("board_data partition read failed..\n");
+#endif
+	}
+	return ret;
+}
+
+
 
 /*
  * Gets the ethernet address from the ART partition table and return the value
@@ -459,56 +551,6 @@ int get_eth_mac_address(uchar *enetaddr, uint no_of_macs)
 	struct mmc *mmc;
 	char mmc_blks[512];
 #endif
-
-#if defined CONFIG_AVM_EVA_MAC_EXTRACT
-	const u32 *urconfig;
-
-	/* ART partition 0th position will contain Mac address. */
-	u8 data[1024];
-	length = sizeof(data);
-	art_offset = CONFIG_AVM_EVA_CFG_OFFSET;
-
-	#if defined CONFIG_AVM_SPI_NOR
-	ret = nand_read(&nand_info[CONFIG_IPQ_SPI_NOR_INFO_IDX], art_offset,
-			&length, data);
-	#elif defined CONFIG_AVM_QPIC_NAND
-	ret = nand_read(&nand_info[CONFIG_QPIC_NAND_NAND_INFO_IDX], art_offset,
-			&length, data);
-	#endif
-
-	if (ret < 0) {
-		printf("ART partition read failed..\n");
-		return -EINVAL;
-	}
-
-	printf("Read %d bytes from 0%x\n", length, art_offset);
-	if (length < sizeof(data))
-		return -EINVAL;
-
-	urconfig = (const u32 *)&data[0x98];
-	if (*urconfig > (art_offset + length - 6) || *urconfig < art_offset) {
-		printf("maca pointer invalid: %x\n", *urconfig);
-		return -EINVAL;
-	}
-
-	eth_parse_enetaddr(&data[*urconfig - art_offset], enetaddr);
-
-	printf("maca: %x:%x:%x:%x:%x:%x\n", enetaddr[0], enetaddr[1], enetaddr[2],
-		enetaddr[3], enetaddr[4], enetaddr[5]);
-
-	urconfig = (const uint32_t *)&data[0xA0];
-	if (*urconfig > (art_offset + length - 6) || *urconfig < art_offset) {
-		printf("macb pointer invalid: %x\n", urconfig[0x28]);
-		return -EINVAL;
-	}
-
-	eth_parse_enetaddr(&data[*urconfig - art_offset], &enetaddr[6]);
-
-	printf("macb: %x:%x:%x:%x:%x:%x\n", enetaddr[6], enetaddr[7], enetaddr[8],
-		enetaddr[9], enetaddr[10], enetaddr[11]);
-
-	return 0;
-#else
 	if (sfi->flash_type != SMEM_BOOT_MMC_FLASH) {
 		if (qca_smem_flash_info.flash_type == SMEM_BOOT_SPI_FLASH)
 			flash_type = CONFIG_IPQ_SPI_NOR_INFO_IDX;
@@ -519,19 +561,20 @@ int get_eth_mac_address(uchar *enetaddr, uint no_of_macs)
 			return -EINVAL;
 		}
 
-		ret = smem_getpart(CONFIG_MAC_PARTITION, &start_blocks, &size_blocks);
+		ret = smem_getpart("0:ART", &start_blocks, &size_blocks);
 		if (ret < 0) {
 			printf("No ART partition found\n");
 			return ret;
 		}
 
-                /*
-                 * ART partition 0th position will contain Mac address.
-                 */
-                art_offset =
-                ((loff_t) qca_smem_flash_info.flash_block_size * start_blocks);
+		/*
+		 * ART partition 0th position will contain Mac address.
+		 */
+		art_offset =
+		((loff_t) qca_smem_flash_info.flash_block_size * start_blocks);
 
-		ret = nand_read(&nand_info[flash_type], art_offset, &length, enetaddr);
+		ret = nand_read(&nand_info[flash_type],
+				art_offset, &length, enetaddr);
 		if (ret < 0)
 			printf("ART partition read failed..\n");
 #ifdef CONFIG_QCA_MMC
@@ -553,7 +596,6 @@ int get_eth_mac_address(uchar *enetaddr, uint no_of_macs)
 			printf("ART partition read failed..\n");
 #endif
 	}
-#endif
 	return ret;
 }
 
@@ -606,11 +648,12 @@ int board_eth_init(bd_t *bis)
 	ipq40xx_edma_common_init();
 	gpio = gboard_param->sw_gpio;
 	if (gpio) {
-		printf("Configure GPIOS");
 		qca_configure_gpio(gpio, gboard_param->sw_gpio_count);
 	}
 	switch (gboard_param->machid) {
 	case MACH_TYPE_IPQ40XX_AP_DK01_1_S1:
+	case MACH_TYPE_IPQ40XX_AP_DK01_1_C2:
+	case MACH_TYPE_IPQ40XX_AP_DK05_1_C1:
 		mdelay(100);
 		writel(GPIO_OUT, GPIO_IN_OUT_ADDR(62));
 		ipq40xx_register_switch(ipq40xx_qca8075_phy_init);
@@ -620,13 +663,10 @@ int board_eth_init(bd_t *bis)
 		writel(GPIO_OUT, GPIO_IN_OUT_ADDR(59));
 		ipq40xx_register_switch(ipq40xx_qca8075_phy_init);
 		break;
-	case MACH_TYPE_IPQ40XX_AP_DK01_1_C2:
-		mdelay(100);
-		writel(GPIO_OUT, GPIO_IN_OUT_ADDR(62));
-		ipq40xx_register_switch(ipq40xx_qca8075_phy_init);
-		break;
+	case MACH_TYPE_IPQ40XX_AP_DK04_1_C4:
 	case MACH_TYPE_IPQ40XX_AP_DK04_1_C1:
 	case MACH_TYPE_IPQ40XX_AP_DK04_1_C3:
+	case MACH_TYPE_IPQ40XX_AP_DK04_1_C5:
 		mdelay(100);
 		writel(GPIO_OUT, GPIO_IN_OUT_ADDR(47));
 		ipq40xx_register_switch(ipq40xx_qca8075_phy_init);
@@ -641,13 +681,19 @@ int board_eth_init(bd_t *bis)
 		writel(GPIO_OUT, GPIO_IN_OUT_ADDR(19));
 		ipq40xx_register_switch(ipq40xx_qca8075_phy_init);
 		break;
+	case MACH_TYPE_IPQ40XX_AP_DK07_1_C1:
+	case MACH_TYPE_IPQ40XX_AP_DK07_1_C2:
+		mdelay(100);
+		writel(GPIO_OUT, GPIO_IN_OUT_ADDR(41));
+		ipq40xx_register_switch(ipq40xx_qca8075_phy_init);
+		break;
 	case MACH_TYPE_IPQ40XX_DB_DK01_1_C1:
 	case MACH_TYPE_IPQ40XX_DB_DK02_1_C1:
-		ipq40xx_register_switch(ipq40xx_qca8033_phy_init);
 		gpio = gboard_param->rgmii_gpio;
 		if (gpio) {
 			qca_configure_gpio(gpio, gboard_param->rgmii_gpio_count);
 		}
+		ipq40xx_register_switch(ipq40xx_qca8033_phy_init);
 		break;
 	default:
 		break;
@@ -675,12 +721,104 @@ struct flash_node_info {
 	int idx;		/* flash index */
 };
 
+int ipq_fdt_fixup_spi_nor_params(void *blob)
+{
+	int nodeoff, ret;
+	qca_smem_flash_info_t sfi;
+	uint32_t val;
+
+	/* Get flash parameters from smem */
+	smem_get_boot_flash(&sfi.flash_type,
+				&sfi.flash_index,
+				&sfi.flash_chip_select,
+				&sfi.flash_block_size,
+				&sfi.flash_density);
+	nodeoff = fdt_node_offset_by_compatible(blob, -1, "n25q128a11");
+
+	if (nodeoff < 0) {
+		printf("ipq: fdt fixup unable to find compatible node\n");
+		return nodeoff;
+	}
+
+	val = cpu_to_fdt32(sfi.flash_block_size);
+	ret = fdt_setprop(blob, nodeoff, "sector-size",
+			&val, sizeof(uint32_t));
+	if (ret) {
+		printf("%s: unable to set sector size\n", __func__);
+		return -1;
+	}
+
+	val = cpu_to_fdt32(sfi.flash_density);
+	ret = fdt_setprop(blob, nodeoff, "density",
+			&val, sizeof(uint32_t));
+	if (ret) {
+		printf("%s: unable to set density\n", __func__);
+		return -1;
+	}
+
+	return 0;
+}
+
+void ipq_fdt_mem_rsvd_fixup(void *blob)
+{
+	u32 val[2], dload;
+	int nodeoff, ret;
+	dload = htonl(DLOAD_DISABLE);
+	val[0] = htonl(RESERVE_ADDRESS_START);
+	val[1] = htonl(RESERVE_ADDRESS_SIZE);
+
+	/* Reserve only the TZ and SMEM memory region and free the rest */
+	nodeoff = fdt_path_offset(blob, "/reserved-memory/rsvd2");
+	if (nodeoff < 0) {
+		debug("ipq: fdt fixup unable to find compatible node\n");
+		return;
+	}
+	ret = fdt_del_node(blob, nodeoff);
+	if (ret != 0) {
+		debug("ipq: fdt fixup unable to delete node\n");
+		return;
+	}
+	nodeoff = fdt_path_offset(blob, "/reserved-memory/wifi_dump");
+	if (nodeoff < 0) {
+		debug("ipq: fdt fixup unable to find compatible node\n");
+		return;
+	}
+	ret = fdt_del_node(blob, nodeoff);
+	if (ret != 0) {
+		debug("ipq: fdt fixup unable to delete node\n");
+		return;
+	}
+	nodeoff = fdt_path_offset(blob, "/reserved-memory/rsvd1");
+	if (nodeoff < 0) {
+		debug("ipq: fdt fixup unable to find compatible node\n");
+		return;
+	}
+	ret = fdt_setprop(blob, nodeoff, "reg", val, sizeof(val));
+	if (ret != 0) {
+		debug("ipq: fdt fixup unable to find compatible node\n");
+		return;
+	}
+
+	/* Set the dload_status to DLOAD_DISABLE */
+	nodeoff = fdt_path_offset(blob, "/soc/qca,scm_restart_reason");
+	if (nodeoff < 0) {
+		debug("ipq: fdt fixup unable to find compatible node\n");
+		return;
+	}
+	ret = fdt_setprop(blob, nodeoff, "dload_status", &dload, sizeof(dload));
+	if (ret != 0) {
+		debug("ipq: fdt fixup unable to find compatible node\n");
+		return;
+	}
+	reset_crashdump();
+}
+
 void ipq_fdt_fixup_version(void *blob)
 {
 	int nodeoff, ret;
 	char ver[OEM_VERSION_STRING_LENGTH + VERSION_STRING_LENGTH + 1];
 
-	nodeoff = fdt_node_offset_by_compatible(blob, -1, "qcom,ipq4019");
+	nodeoff = fdt_node_offset_by_compatible(blob, -1, "qcom,ipq40xx");
 
 	if (nodeoff < 0) {
 		debug("ipq: fdt fixup unable to find compatible node\n");
@@ -732,6 +870,243 @@ void ipq_fdt_fixup_mtdparts(void *blob, struct flash_node_info *ni)
 		}
 	}
 }
+
+struct vlan_tag {
+	unsigned int r0;
+	unsigned int r1;
+};
+
+struct eth_param{
+	int nodeoff;
+	int mdio_addr;
+	int poll;
+	int speed;
+	int duplex;
+	unsigned long gmac_no;
+};
+
+static void ipq40xx_set_setprop(void *blob, int nodeoff, unsigned long gmac_no,
+							char *str, int val)
+{
+	int ret;
+
+	ret = fdt_setprop(blob, nodeoff, str, &val, sizeof(val));
+	if (ret)
+		debug("unable to set property %s for %lu with error %d\n",
+							str, gmac_no, ret);
+}
+
+static void ipq40xx_populate_eth_params(void *blob, struct eth_param *port)
+{
+	ipq40xx_set_setprop(blob, port->nodeoff, port->gmac_no,
+				"qcom,phy_mdio_addr", htonl(port->mdio_addr));
+	ipq40xx_set_setprop(blob, port->nodeoff, port->gmac_no,
+				"qcom,poll_required", htonl(port->poll));
+	ipq40xx_set_setprop(blob, port->nodeoff, port->gmac_no,
+				"qcom,forced_speed", htonl(port->speed));
+	ipq40xx_set_setprop(blob, port->nodeoff, port->gmac_no,
+				"qcom,forced_duplex", htonl(port->duplex));
+}
+
+/*
+ * Logic to patch Ethernet params.
+ */
+static int ipq40xx_patch_eth_params(void *blob, unsigned long gmac_no)
+{
+	int nodeoff, nodeoff_c;
+	int ret, i;
+	struct vlan_tag vlan;
+	struct eth_param port_config;
+	const char *eth2_prop[] = {"/soc/edma/gmac2", "/soc/edma/gmac3",
+							"/soc/edma/gmac4"};
+	const char *alias_prop[] = {"ethernet2", "ethernet3", "ethernet4"};
+	const char *gmac_node[] = {"gmac2", "gmac3", "gmac4"};
+
+	nodeoff = fdt_path_offset(blob, "/aliases");
+	if (nodeoff < 0) {
+		printf("ipq: fdt fixup unable to find compatible node\n");
+		return -1;
+	} else {
+		debug("Node Found\n");
+	}
+
+	for (i = 0; i < (gmac_no - 2); i++) {
+		ret = fdt_setprop(blob, nodeoff, alias_prop[i],
+			eth2_prop[i], (strlen(eth2_prop[i]) + 1));
+		if (ret)
+			debug("%s: unable to patch alias\n", __func__);
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+
+		ret = fdt_add_subnode(blob, nodeoff_c, gmac_node[i]);
+		if (ret < 0)
+			debug("%s: unable to add node\n", __func__);
+	}
+
+	switch (gmac_no) {
+	case 3:
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac1");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x1);
+		vlan.r1 = htonl(0x10);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac2");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x3);
+		vlan.r1 = htonl(0xE);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+		break;
+	case 4:
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac1");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x1);
+		vlan.r1 = htonl(0x10);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac2");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x3);
+		vlan.r1 = htonl(0x8);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac3");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x4);
+		vlan.r1 = htonl(0x6);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+		break;
+	case 5:
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac1");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x1);
+		vlan.r1 = htonl(0x10);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		port_config.nodeoff = nodeoff_c;
+		port_config.mdio_addr = 3;
+		port_config.poll = 1;
+		port_config.speed = 1000;
+		port_config.duplex = 1;
+		port_config.gmac_no = gmac_no;
+		ipq40xx_populate_eth_params(blob, &port_config);
+
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac2");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x3);
+		vlan.r1 = htonl(0x8);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		port_config.nodeoff = nodeoff_c;
+		port_config.mdio_addr = 2;
+		port_config.poll = 1;
+		port_config.speed = 1000;
+		port_config.duplex = 1;
+		port_config.gmac_no = gmac_no;
+		ipq40xx_populate_eth_params(blob, &port_config);
+
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac3");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x4);
+		vlan.r1 = htonl(0x4);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		port_config.nodeoff = nodeoff_c;
+		port_config.mdio_addr = 1;
+		port_config.poll = 1;
+		port_config.speed = 1000;
+		port_config.duplex = 1;
+		port_config.gmac_no = gmac_no;
+		ipq40xx_populate_eth_params(blob, &port_config);
+
+		nodeoff_c = fdt_path_offset(blob, "/soc/edma/gmac4");
+		if (nodeoff_c < 0) {
+			printf("ipq: unable to find compatiable edma node\n");
+			return -1;
+		}
+		vlan.r0 = htonl(0x5);
+		vlan.r1 = htonl(0x2);
+		ret = fdt_setprop(blob, nodeoff_c, "vlan_tag",
+			&vlan, sizeof(vlan));
+		if (ret)
+			debug("%s: unable to set property\n", __func__);
+
+		port_config.nodeoff = nodeoff_c;
+		port_config.mdio_addr = 0;
+		port_config.poll = 1;
+		port_config.speed = 1000;
+		port_config.duplex = 1;
+		port_config.gmac_no = gmac_no;
+		ipq40xx_populate_eth_params(blob, &port_config);
+
+		break;
+	}
+	nodeoff = fdt_node_offset_by_compatible(blob,
+			-1, "qcom,ess-edma");
+	if (nodeoff < 0) {
+		printf("ipq: unable to find compatible edma node\n");
+		return -1;
+	}
+
+	gmac_no = htonl(gmac_no);
+	ret = fdt_setprop(blob, nodeoff, "qcom,num_gmac",
+		&gmac_no, sizeof(gmac_no));
+	if (ret)
+		debug("%s: unable to set property\n", __func__);
+	return 0;
+}
+
 /*
  * For newer kernel that boot with device tree (3.14+), all of memory is
  * described in the /memory node, including areas that the kernel should not be
@@ -744,16 +1119,72 @@ void ft_board_setup(void *blob, bd_t *bd)
 {
 	u64 memory_start = CONFIG_SYS_SDRAM_BASE;
 	u64 memory_size = gboard_param->ddr_size;
+	unsigned long gmac_no;
+	char *s;
 	char *mtdparts = NULL;
 	char parts_str[256];
 	qca_smem_flash_info_t *sfi = &qca_smem_flash_info;
+	struct flash_node_info nodes[] = {
+		{ "qcom,msm-nand", MTD_DEV_TYPE_NAND, 0 },
+		{ "spinand,mt29f", MTD_DEV_TYPE_NAND, 1 },
+		{ "n25q128a11", MTD_DEV_TYPE_NAND, 2 },
+		{ NULL, 0, -1 },	/* Terminator */
+	};
 
 	fdt_fixup_memory_banks(blob, &memory_start, &memory_size, 1);
 	ipq_fdt_fixup_version(blob);
+#ifndef CONFIG_QCA_APPSBL_DLOAD
+	ipq_fdt_mem_rsvd_fixup(blob);
+#endif
+	if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
+		mtdparts = "mtdparts=nand0";
+	} else if (sfi->flash_type == SMEM_BOOT_SPI_FLASH) {
+		/* Patch NOR block size and density for
+		 * generic probe case */
+		ipq_fdt_fixup_spi_nor_params(blob);
+		if (gboard_param->spi_nand_available &&
+			get_which_flash_param("rootfs") == 0) {
+			sprintf(parts_str,
+				"mtdparts=nand1:0x%x@0(rootfs);spi0.0",
+				IPQ_NAND_ROOTFS_SIZE);
+			mtdparts = parts_str;
+		} else if (gboard_param->nor_nand_available &&
+			get_which_flash_param("rootfs") == 0) {
+			sprintf(parts_str,
+				"mtdparts=nand0:0x%x@0(rootfs);spi0.0",
+				IPQ_NAND_ROOTFS_SIZE);
+			mtdparts = parts_str;
 
+		} else {
+			mtdparts = "mtdparts=spi0.0";
+		}
+	}
+
+
+	if (mtdparts) {
+		mtdparts = qca_smem_part_to_mtdparts(mtdparts);
+		if (mtdparts != NULL) {
+			debug("mtdparts = %s\n", mtdparts);
+			setenv("mtdparts", mtdparts);
+		}
+		setenv("mtdids", gboard_param->mtdids);
+
+		ipq_fdt_fixup_mtdparts(blob, nodes);
+	}
+	s = (getenv("gmacnumber"));
+	if (s) {
+		strict_strtoul(s, 16, &gmac_no);
+		if (gmac_no > 2 && gmac_no < 6)
+			ipq40xx_patch_eth_params(blob, gmac_no);
+	}
+	dcache_disable();
 	ipq40xx_set_ethmac_addr();
-
 	fdt_fixup_ethernet(blob);
+
+#ifdef CONFIG_QCA_MMC
+        board_mmc_deinit();
+#endif
+
 }
 
 #endif /* CONFIG_OF_BOARD_SETUP */
@@ -763,7 +1194,7 @@ int board_mmc_env_init(void)
 {
 	block_dev_desc_t *blk_dev;
 	disk_partition_t disk_info;
-	int ret = 0;
+	int ret;
 
 	if (mmc_init(mmc_host.mmc)) {
 		/* The HS mode command(cmd6) is getting timed out. So mmc card is
@@ -854,6 +1285,16 @@ void pcie_controller_reset(int id)
 	pcie_clock_enable(GCC_PCIE_AXI_S_CBCR);
 	pcie_clock_enable(GCC_PCIE_AHB_CBCR);
 
+	/* Assert cc_pcie20_mstr_axi_ares */
+	val = readl(cfg->pcie_rst);
+	val |= PCIE_RST_CTRL_AXI_M_ARES;
+	writel(val, cfg->pcie_rst);
+
+	/* Assert cc_pcie20_slv_axi_ares */
+	val = readl(cfg->pcie_rst);
+	val |= PCIE_RST_CTRL_AXI_S_ARES;
+	writel(val, cfg->pcie_rst);
+
 	/* Assert cc_pcie20_core_ares */
 	writel(PCIE_RST_CTRL_PIPE_ARES, cfg->pcie_rst);
 
@@ -867,31 +1308,21 @@ void pcie_controller_reset(int id)
 	val |= PCIE_RST_CTRL_PIPE_PHY_AHB_ARES;
 	writel(val, cfg->pcie_rst);
 
-	gpio_set_value(PCIE_RST_GPIO, GPIO_OUT_LOW);
-
-	/* Assert cc_pcie20_mstr_axi_ares */
-	val = readl(cfg->pcie_rst);
-	val |= PCIE_RST_CTRL_AXI_M_ARES;
-	writel(val, cfg->pcie_rst);
-
 	/* Assert cc_pcie20_mstr_sticky_ares */
 	val = readl(cfg->pcie_rst);
 	val |= PCIE_RST_CTRL_AXI_M_STICKY_ARES;
 	writel(val, cfg->pcie_rst);
 
-	/* Assert cc_pcie20_slv_axi_ares */
-	val = readl(cfg->pcie_rst);
-	val |= PCIE_RST_CTRL_AXI_S_ARES;
-	writel(val, cfg->pcie_rst);
+	gpio_set_value(PCIE_RST_GPIO, GPIO_OUT_LOW);
 
 	/* Assert cc_pcie20_ahb_ares;  */
 	val = readl(cfg->pcie_rst);
 	val |= PCIE_RST_CTRL_AHB_ARES;
 	writel(val, cfg->pcie_rst);
 
-	/* DeAssert cc_pcie20_phy_ahb_ares  */
+	/* DeAssert cc_pcie20_ahb_ares */
 	val = readl(cfg->pcie_rst);
-	val &= ~(PCIE_RST_CTRL_AHB_ARES);
+	val &= ~(PCIE_RST_CTRL_PIPE_PHY_AHB_ARES);
 	writel(val, cfg->pcie_rst);
 
 	/* DeAssert cc_pcie20_pciephy_phy_ares*/
@@ -923,9 +1354,9 @@ void pcie_controller_reset(int id)
 	val &= ~(PCIE_RST_CTRL_AXI_S_ARES);
 	writel(val, cfg->pcie_rst);
 
-	/* DeAssert cc_pcie20_ahb_ares */
+	/* DeAssert cc_pcie20_phy_ahb_ares  */
 	val = readl(cfg->pcie_rst);
-	val &= ~(PCIE_RST_CTRL_PIPE_PHY_AHB_ARES);
+	val &= ~(PCIE_RST_CTRL_AHB_ARES);
 	writel(val, cfg->pcie_rst);
 }
 
@@ -1040,6 +1471,9 @@ void board_pci_init()
 {
 	int i;
 	pcie_params_t *cfg;
+
+	if (gboard_param->machid == MACH_TYPE_IPQ40XX_AP_DK07_1_C2)
+		return;
 
 	for (i = 0; i < PCI_MAX_DEVICES; i++) {
 		cfg = &gboard_param->pcie_cfg[i];

@@ -6,12 +6,22 @@
 #define __COMPILER_H__
 
 #include <stddef.h>
-#include <stdint.h>
 
 #ifdef USE_HOSTCC
 
+#if defined(__BEOS__)	 || \
+    defined(__NetBSD__)  || \
+    defined(__FreeBSD__) || \
+    defined(__sun__)	 || \
+    defined(__APPLE__)
+# include <inttypes.h>
+#elif defined(__linux__) || defined(__WIN32__) || defined(__MINGW32__)
+# include <stdint.h>
+#endif
+
 #include <errno.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -112,6 +122,9 @@ typedef unsigned int uint;
  */
 #define __WORDSIZE	32
 #endif
+
+/* Type for `void *' pointers. */
+typedef unsigned long int uintptr_t;
 
 #endif /* USE_HOSTCC */
 

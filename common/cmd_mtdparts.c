@@ -1467,8 +1467,8 @@ static void spread_partition(struct mtd_info *mtd, struct part_info *part,
 	}
 
 	if (truncated) {
-		printf("truncated partition %s to %ld bytes\n", part->name,
-		       (long) (net_size + padding_size));
+		printf("truncated partition %s to %lld bytes\n", part->name,
+		       (uint64_t) net_size + padding_size);
 	}
 
 	part->size = net_size + padding_size;

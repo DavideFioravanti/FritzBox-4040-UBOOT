@@ -51,8 +51,8 @@
 #endif /* USE_HOSTCC */
 
 #if defined(CONFIG_FIT)
-#include <linux/fdt.h>
-#include <linux/libfdt.h>
+#include <fdt.h>
+#include <libfdt.h>
 #include <fdt_support.h>
 #define CONFIG_MD5		/* FIT images need MD5 support */
 #define CONFIG_SHA1		/* and SHA1 */
@@ -181,29 +181,6 @@
  * Legacy format image header,
  * all data in network byte order (aka natural aka bigendian).
  */
-
-/* If hw[i].kernel == ROOTFS_OFFSET_MAGIC,
- * rootfilesystem offset (uImage header size + kernel size)
- * can be calculated by following equation:
- * (hw[i].minor << 16) | (hw[i+1].major << 8) | (hw[i+1].minor)
- */
-#define ROOTFS_OFFSET_MAGIC	0xA9	/* Occupy two version_t		*/
-
-#define MAX_STRING 12
-#define MAX_VER 4
-
-typedef struct {
-       uint8_t major;
-       uint8_t minor;
-} version_t;
-
-typedef struct {
-       version_t kernel;
-       version_t fs;
-       char      productid[MAX_STRING];
-       version_t hw[MAX_VER*2];
-} TAIL;
-
 typedef struct image_header {
 	uint32_t	ih_magic;	/* Image Header Magic Number	*/
 	uint32_t	ih_hcrc;	/* Image Header CRC Checksum	*/
@@ -289,7 +266,6 @@ typedef struct bootm_headers {
 #ifdef CONFIG_LMB
 	struct lmb	lmb;		/* for memory mgmt */
 #endif
-
 } bootm_headers_t;
 
 extern bootm_headers_t images;

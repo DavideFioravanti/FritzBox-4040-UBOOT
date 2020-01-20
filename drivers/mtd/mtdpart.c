@@ -20,7 +20,7 @@
 #include <linux/compat.h>
 
 /* Our partition linked list */
-static struct list_head mtd_partitions = { NULL, NULL };
+struct list_head mtd_partitions;
 
 /* Our partition node structure */
 struct mtd_part {
@@ -348,15 +348,15 @@ static struct mtd_part *add_one_partition(struct mtd_info *master,
 			/* Round up to next erasesize */
 			slave->offset = (mtd_div_by_eb(cur_offset, master) + 1) * master->erasesize;
 			printk(KERN_NOTICE "Moving partition %d: "
-			       "0x%08lx -> 0x%08lx\n", partno,
-			       (unsigned long)cur_offset, (unsigned long)slave->offset);
+			       "0x%012llx -> 0x%012llx\n", partno,
+			       (unsigned long long)cur_offset, (unsigned long long)slave->offset);
 		}
 	}
 	if (slave->mtd.size == MTDPART_SIZ_FULL)
 		slave->mtd.size = master->size - slave->offset;
 
-	printk(KERN_NOTICE "0x%08lx-0x%08lx : \"%s\"\n", (unsigned long)slave->offset,
-		(unsigned long)(slave->offset + slave->mtd.size), slave->mtd.name);
+	printk(KERN_NOTICE "0x%012llx-0x%012llx : \"%s\"\n", (unsigned long long)slave->offset,
+		(unsigned long long)(slave->offset + slave->mtd.size), slave->mtd.name);
 
 	/* let's do some sanity checks */
 	if (slave->offset >= master->size) {
@@ -369,8 +369,8 @@ static struct mtd_part *add_one_partition(struct mtd_info *master,
 	}
 	if (slave->offset + slave->mtd.size > master->size) {
 		slave->mtd.size = master->size - slave->offset;
-		printk(KERN_WARNING"mtd: partition \"%s\" extends beyond the end of device \"%s\" -- size truncated to %#lx\n",
-			part->name, master->name, (unsigned long)slave->mtd.size);
+		printk(KERN_WARNING"mtd: partition \"%s\" extends beyond the end of device \"%s\" -- size truncated to %#llx\n",
+			part->name, master->name, (unsigned long long)slave->mtd.size);
 	}
 	if (master->numeraseregions > 1) {
 		/* Deal with variable erase size stuff */

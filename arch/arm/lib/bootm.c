@@ -30,8 +30,8 @@
 #include <image.h>
 #include <u-boot/zlib.h>
 #include <asm/byteorder.h>
-#include <linux/fdt.h>
-#include <linux/libfdt.h>
+#include <fdt.h>
+#include <libfdt.h>
 #include <fdt_support.h>
 #include <asm/bootm.h>
 #include <jffs2/load_kernel.h>
@@ -39,10 +39,6 @@
 #include <asm/arch-ipq806x/smem.h>
 
 DECLARE_GLOBAL_DATA_PTR;
-
-#ifdef crc32
-#undef crc32
-#endif
 
 #if defined(CONFIG_SETUP_MEMORY_TAGS) || \
 	defined(CONFIG_CMDLINE_TAG) || \

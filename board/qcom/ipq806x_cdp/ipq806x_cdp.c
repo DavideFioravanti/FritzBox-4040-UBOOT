@@ -87,7 +87,6 @@ extern void mmc_env_relocate_spec(void);
 extern int nand_env_init(void);
 extern int nand_saveenv(void);
 extern void nand_env_relocate_spec(void);
-
 /*
  * Don't have this as a '.bss' variable. The '.bss' and '.rel.dyn'
  * sections seem to overlap.
@@ -314,7 +313,7 @@ void clear_l2cache_err(void)
 int env_init(void)
 {
 	ipq_smem_flash_info_t sfi;
-	int ret = 0;
+	int ret;
 
 	smem_get_boot_flash(&sfi.flash_type,
 				  &sfi.flash_index,

@@ -37,6 +37,7 @@ uchar ipq40xx_def_enetaddr[6] = {0x00, 0x03, 0x7F, 0xBA, 0xDB, 0xAD};
 static struct ipq40xx_eth_dev *ipq40xx_edma_dev[IPQ40XX_EDMA_DEV];
 static int (*ipq40xx_switch_init)(struct ipq40xx_eth_dev *cfg);
 extern void qca8075_ess_reset(void);
+extern int read_board_data(uchar *board_data);  /* Foxconn Bob added on 06/13/2016, to read board data */
 
 void ipq40xx_register_switch(int(*sw_init)(struct ipq40xx_eth_dev *cfg))
 {
@@ -826,13 +827,20 @@ int ipq40xx_edma_init(ipq40xx_edma_board_cfg_t *edma_cfg)
 	struct ipq40xx_edma_common_info *c_info[IPQ40XX_EDMA_DEV];
 	struct ipq40xx_edma_hw *hw[IPQ40XX_EDMA_DEV];
 	uchar enet_addr[IPQ40XX_EDMA_DEV * 6];
+	uchar board_data[BD_SIZE];
 	int i;
 	int ret;
 
 	memset(c_info, 0, (sizeof(c_info) * IPQ40XX_EDMA_DEV));
 	memset(enet_addr, 0, sizeof(enet_addr));
+	memset(board_data, 0, BD_SIZE);
 	/* Getting the MAC address from ART partition */
-	ret = get_eth_mac_address(enet_addr, IPQ40XX_EDMA_DEV);
+    /* Foxconn Bob modified start on 06/13/2016, to get mac address from board data partition */
+    /* ret = get_eth_mac_address(enet_addr, IPQ40XX_EDMA_DEV); */
+    ret = read_board_data(board_data);
+    memcpy(enet_addr, board_data+LAN_MAC_OFFSET, 6);
+    /* Foxconn Bob modified start on 06/13/2016, to get mac address from board data partition */
+    
 	/*
 	 * Register EDMA as single ethernet
 	 * interface.
@@ -964,7 +972,10 @@ int ipq40xx_edma_init(ipq40xx_edma_board_cfg_t *edma_cfg)
 		if(edma_cfg->phy == PHY_INTERFACE_MODE_PSGMII) {
 			qca8075_ess_reset();
 			mdelay(100);
-			psgmii_self_test();
+            #if 0
+			psgmii_self_test(); 	/* Bob removed 0n 07/14/2016, to avoid stuck here fro 3 minutes if ethernet daughter board is not present */
+            #endif
+
 			mdelay(300);
 			clear_self_test_config();
 		}

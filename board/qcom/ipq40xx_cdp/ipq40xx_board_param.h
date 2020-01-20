@@ -1,6 +1,6 @@
 /*
  *
- * Copyright (c) 2015, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, 2016 The Linux Foundation. All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
  * modification, are permitted provided that the following conditions are
@@ -35,6 +35,69 @@
 #include <asm/arch-qcom-common/gpio.h>
 #include <asm/sizes.h>
 #include "ipq40xx_cdp.h"
+
+gpio_func_data_t mmc_ap_dk07[] = {
+	{
+		.gpio = 23,
+		.func = 1,	/* sdio0 */
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_10MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 24,
+		.func = 1,	 /* sdio1 */
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_10MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 25,
+		.func = 1,	 /* sdio2 */
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_10MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 26,
+		.func = 1,	 /* sdio3 */
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_10MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 27,
+		.func = 1,	 /* sdio_clk */
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_16MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 28,
+		.func = 1,	 /* sdio_cmd */
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_10MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+};
 
 gpio_func_data_t mmc_ap_dk04[] = {
 	{
@@ -587,6 +650,61 @@ gpio_func_data_t ap_dk06_1_c1_sw_gpio_bga[] = {
 		.gpio_od_en = GPIO_OD_DISABLE,
 		.gpio_pu_res = GPIO_PULL_RES2
 	},
+	{
+		/* overriding the default configuration of gpio52 */
+		.gpio = 52,
+		.func = 0,
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+};
+
+gpio_func_data_t ap_dk07_1_c1_sw_gpio_bga[] = {
+	{
+		.gpio = 6,
+		.func = 1,
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 7,
+		.func = 1,
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		.gpio = 41,
+		.func = 0,
+		.pull = GPIO_PULL_DOWN,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_ENABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
+	{
+		/* overriding the default configuration of gpio52 */
+		.gpio = 52,
+		.func = 0,
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_DISABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2
+	},
 };
 
 gpio_func_data_t db_dk_2_1_sw_gpio_bga[] = {
@@ -682,7 +800,7 @@ gpio_func_data_t uart1_gpio_dk01[] = {
 	{
 		.gpio = 60,
 		.func = 2,
-		.pull = GPIO_NO_PULL,
+		.pull = GPIO_PULL_DOWN,
 		.oe = GPIO_OE_ENABLE
 	},
 	{
@@ -697,7 +815,7 @@ gpio_func_data_t uart1_gpio_dk04[] = {
 	{
 		.gpio = 16,
 		.func = 1,
-		.pull = GPIO_NO_PULL,
+		.pull = GPIO_PULL_DOWN,
 		.oe = GPIO_OE_ENABLE
 	},
 	{
@@ -738,6 +856,20 @@ gpio_func_data_t i2c0_gpio[] = {
 		.oe = GPIO_OE_ENABLE
 	},
 };
+gpio_func_data_t i2c1_gpio[] = {
+	{
+		.gpio = 34,
+		.func = 1,
+		.pull = GPIO_NO_PULL,
+		.oe = GPIO_OE_ENABLE
+	},
+	{
+		.gpio = 35,
+		.func = 1,
+		.pull = GPIO_NO_PULL,
+		.oe = GPIO_OE_ENABLE
+	},
+};
 #endif
 
 uart_cfg_t uart1_console_uart_dk01 = {
@@ -759,6 +891,10 @@ uart_cfg_t uart2 = {
 i2c_cfg_t i2c0 = {
 	.i2c_base = I2C0_BASE,
 	.i2c_gpio = i2c0_gpio,
+};
+i2c_cfg_t i2c1 = {
+	.i2c_base = I2C1_BASE,
+	.i2c_gpio = i2c1_gpio,
 };
 #endif
 
@@ -855,7 +991,6 @@ gpio_func_data_t pci_0_gpio_data[] = {
 		.gpio_od_en = GPIO_OD_DISABLE,
 		.gpio_pu_res = GPIO_PULL_RES2,
 	},
-#ifndef RTAC42U
 	{
 		.gpio = PCIE_WAKE_GPIO,
 		.func = 0,
@@ -867,7 +1002,6 @@ gpio_func_data_t pci_0_gpio_data[] = {
 		.gpio_od_en = GPIO_OD_DISABLE,
 		.gpio_pu_res = GPIO_PULL_RES2,
 	},
-#endif
 	{
 		.gpio = PCIE_CLKREQ_GPIO,
 		.func = 0,
@@ -875,6 +1009,31 @@ gpio_func_data_t pci_0_gpio_data[] = {
 		.pull = GPIO_PULL_UP,
 		.drvstr = GPIO_2MA,
 		.oe = GPIO_OE_ENABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2,
+	},
+};
+
+gpio_func_data_t pci_0_dk07_gpio_data[] = {
+	{
+		.gpio = PCIE_RST_GPIO,
+		.func = 0,
+		.out = GPIO_OUT_HIGH,
+		.pull = GPIO_PULL_DOWN,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_ENABLE,
+		.gpio_vm = GPIO_VM_ENABLE,
+		.gpio_od_en = GPIO_OD_DISABLE,
+		.gpio_pu_res = GPIO_PULL_RES2,
+	},
+	{
+		.gpio = PCIE_WAKE_GPIO,
+		.func = 0,
+		.out = GPIO_OUT_LOW,
+		.pull = GPIO_PULL_UP,
+		.drvstr = GPIO_2MA,
+		.oe = GPIO_OE_DISABLE,
 		.gpio_vm = GPIO_VM_ENABLE,
 		.gpio_od_en = GPIO_OD_DISABLE,
 		.gpio_pu_res = GPIO_PULL_RES2,
@@ -895,6 +1054,19 @@ gpio_func_data_t pci_0_gpio_data[] = {
 	.axi_bar_size		= PCIE20_##_id##_AXI_BAR_SIZE,		\
 	.axi_conf		= PCIE20_##_id##_AXI_CONF,		\
 	.pcie_rst		= PCIE20_##_id##_RESET,			\
+}
+
+#define pcie_board_cfg_dk07(_id)                                             \
+{                                                                       \
+	.pci_gpio		= pci_##_id##_dk07_gpio_data,                \
+	.pci_gpio_count		= ARRAY_SIZE(pci_##_id##_dk07_gpio_data),    \
+	.parf			= PCIE20_##_id##_PARF_PHYS,             \
+	.elbi			= PCIE20_##_id##_ELBI_PHYS,             \
+	.pcie20			= PCIE20_##_id##_PHYS,                  \
+	.axi_bar_start		= PCIE20_##_id##_AXI_BAR_PHYS,          \
+	.axi_bar_size		= PCIE20_##_id##_AXI_BAR_SIZE,          \
+	.axi_conf		= PCIE20_##_id##_AXI_CONF,              \
+	.pcie_rst		= PCIE20_##_id##_RESET,                 \
 }
 
 #define PCIE20_PARF_PHY_CTRL				0x40
@@ -932,7 +1104,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@4",
+		.dtb_config_name = { "config@4", "config@ap.dk01.1-c1" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_AP_DK01_1_C1,
@@ -948,7 +1120,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@1",
+		.dtb_config_name = { "config@4", "config@ap.dk01.1-c1" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_AP_DK01_1_C2,
@@ -964,7 +1136,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 1,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@5",
+		.dtb_config_name = { "config@5", "config@ap.dk01.1-c2" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_AP_DK04_1_C1,
@@ -972,10 +1144,8 @@ board_ipq40xx_params_t board_params[] = {
 		.mtdids = "nand0=nand0,nand2=spi0.0",
 		.spi_nor_gpio = spi_nor_bga,
 		.spi_nor_gpio_count = ARRAY_SIZE(spi_nor_bga),
-#if !defined(RTAC42U) // we don't use QPIC LCD
 		.nand_gpio = nand_gpio_bga,
 		.nand_gpio_count = ARRAY_SIZE(nand_gpio_bga),
-#endif
 		.sw_gpio = sw_gpio_bga,
 		.sw_gpio_count = ARRAY_SIZE(sw_gpio_bga),
 		.edma_cfg = {
@@ -985,19 +1155,52 @@ board_ipq40xx_params_t board_params[] = {
 		.uart_cfg = &uart2,
 		.console_uart_cfg = &uart1_console_uart_dk04,
 #ifdef CONFIG_IPQ40XX_I2C
-		.i2c_cfg = &i2c0,
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
 #endif
 		.mmc_gpio = mmc_ap_dk04,
 		.mmc_gpio_count = ARRAY_SIZE(mmc_ap_dk04),
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@1",
 #ifdef CONFIG_IPQ40XX_PCI
 		.pcie_cfg = {
 			pcie_board_cfg(0),
 		},
 #endif
+		.dtb_config_name = { "config@1", "config@ap.dk04.1-c1" },
+	},
+	{
+		.machid = MACH_TYPE_IPQ40XX_AP_DK04_1_C4,
+		.ddr_size = (256 << 20),
+		.mtdids = "nand0=nand0,nand2=spi0.0",
+		.spi_nor_gpio = spi_nor_bga,
+		.spi_nor_gpio_count = ARRAY_SIZE(spi_nor_bga),
+		.nand_gpio = nand_gpio_bga,
+		.nand_gpio_count = ARRAY_SIZE(nand_gpio_bga),
+		.sw_gpio = sw_gpio_bga,
+		.sw_gpio_count = ARRAY_SIZE(sw_gpio_bga),
+		.edma_cfg = {
+			ipq40xx_edma_cfg(0, 5, PSGMII,
+					0, 1, 2, 3, 4)
+		},
+		.uart_cfg = &uart2,
+		.console_uart_cfg = &uart1_console_uart_dk04,
+#ifdef CONFIG_IPQ40XX_I2C
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
+#endif
+		.mmc_gpio = mmc_ap_dk04,
+		.mmc_gpio_count = ARRAY_SIZE(mmc_ap_dk04),
+		.spi_nand_available = 0,
+		.nor_nand_available = 0,
+		.nor_emmc_available = 0,
+#ifdef CONFIG_IPQ40XX_PCI
+		.pcie_cfg = {
+			pcie_board_cfg(0),
+		},
+#endif
+		.dtb_config_name = { "config@8", "config@ap.dk04.1-c4" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_AP_DK04_1_C2,
@@ -1005,6 +1208,10 @@ board_ipq40xx_params_t board_params[] = {
 		.mtdids = "nand2=spi0.0",
 		.uart_cfg = &uart2,
 		.console_uart_cfg = &uart1_console_uart_dk04,
+#ifdef CONFIG_IPQ40XX_I2C
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
+#endif
 		.spi_nor_gpio = spi_nor_bga,
 		.spi_nor_gpio_count = ARRAY_SIZE(spi_nor_bga),
 		.sw_gpio = ap_dk04_1_c2_sw_gpio_bga,
@@ -1018,7 +1225,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@2",
+		.dtb_config_name = { "config@2", "config@ap.dk04.1-c2" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_AP_DK04_1_C3,
@@ -1040,7 +1247,51 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 1,
-		.dtb_config_name = "#config@3",
+		.dtb_config_name = { "config@3", "config@ap.dk04.1-c3" },
+	},
+	{
+		.machid = MACH_TYPE_IPQ40XX_AP_DK04_1_C5,
+		.ddr_size = (256 << 20),
+		.mtdids = "nand1=nand1,nand2=spi0.0",
+		.spi_nor_gpio = spi_nor_bga,
+		.spi_nor_gpio_count = ARRAY_SIZE(spi_nor_bga),
+		.sw_gpio = sw_gpio_bga,
+		.sw_gpio_count = ARRAY_SIZE(sw_gpio_bga),
+		.edma_cfg = {
+			ipq40xx_edma_cfg(0, 5, PSGMII,
+					0, 1, 2, 3, 4)
+		},
+		.uart_cfg = &uart2,
+		.console_uart_cfg = &uart1_console_uart_dk04,
+#ifdef CONFIG_IPQ40XX_I2C
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
+#endif
+		.spi_nand_available = 1,
+		.nor_nand_available = 0,
+		.nor_emmc_available = 0,
+#ifdef CONFIG_IPQ40XX_PCI
+		.pcie_cfg = {
+			pcie_board_cfg(0),
+		},
+#endif
+		.dtb_config_name = { "config@12", "config@ap.dk04.1-c5" },
+	},
+	{
+		.machid = MACH_TYPE_IPQ40XX_AP_DK05_1_C1,
+		.ddr_size = (256 << 20),
+		.mtdids = "nand1=nand1,nand2=spi0.0",
+		.console_uart_cfg = &uart1_console_uart_dk01,
+		.sw_gpio = ap_dk01_1_c2_sw_gpio_qfn,
+		.sw_gpio_count = ARRAY_SIZE(ap_dk01_1_c2_sw_gpio_qfn),
+		.edma_cfg = {
+			ipq40xx_edma_cfg(0, 5, PSGMII,
+					0, 1, 2, 3, 4)
+		},
+		.spi_nand_available = 1,
+		.nor_nand_available = 0,
+		.nor_emmc_available = 0,
+		.dtb_config_name = { "config@11", "config@ap.dk05.1-c1" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_AP_DK06_1_C1,
@@ -1062,9 +1313,67 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@9",
+		.dtb_config_name = { "config@9", "config@ap.dk06.1-c1" },
 	},
-
+	{
+		.machid = MACH_TYPE_IPQ40XX_AP_DK07_1_C1,
+		.ddr_size = (512 << 20),
+		.console_uart_cfg = &uart1_console_uart_dk04,
+		.mtdids = "nand0=nand0,nand2=spi0.0",
+#ifdef CONFIG_IPQ40XX_I2C
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
+#endif
+		.spi_nor_gpio = spi_nor_bga,
+		.spi_nor_gpio_count = ARRAY_SIZE(spi_nor_bga),
+		.nand_gpio = nand_gpio_bga,
+		.nand_gpio_count = ARRAY_SIZE(nand_gpio_bga),
+		.sw_gpio = ap_dk07_1_c1_sw_gpio_bga,
+		.sw_gpio_count = ARRAY_SIZE(ap_dk07_1_c1_sw_gpio_bga),
+		.edma_cfg = {
+			ipq40xx_edma_cfg(0, 5, PSGMII,
+			0, 1, 2, 3, 4)
+			},
+#ifdef CONFIG_IPQ40XX_I2C
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
+#endif
+		.mmc_gpio = mmc_ap_dk07,
+		.mmc_gpio_count = ARRAY_SIZE(mmc_ap_dk07),
+		.spi_nand_available = 0,
+		.nor_nand_available = 1,
+		.nor_emmc_available = 0,
+#ifdef CONFIG_IPQ40XX_PCI
+		.pcie_cfg = {
+			pcie_board_cfg_dk07(0),
+		},
+#endif
+		.dtb_config_name = { "config@10", "config@ap.dk07.1-c1" },
+	},
+	{
+		.machid = MACH_TYPE_IPQ40XX_AP_DK07_1_C2,
+		.ddr_size = (512 << 20),
+		.console_uart_cfg = &uart1_console_uart_dk04,
+		.mtdids = "nand0=nand0",
+		.nand_gpio = nand_gpio_bga,
+		.nand_gpio_count = ARRAY_SIZE(nand_gpio_bga),
+		.sw_gpio = ap_dk07_1_c1_sw_gpio_bga,
+		.sw_gpio_count = ARRAY_SIZE(ap_dk07_1_c1_sw_gpio_bga),
+		.edma_cfg = {
+			ipq40xx_edma_cfg(0, 5, PSGMII,
+			0, 1, 2, 3, 4)
+			},
+#ifdef CONFIG_IPQ40XX_I2C
+		.i2c0_cfg = &i2c0,
+		.i2c1_cfg = &i2c1,
+#endif
+		.mmc_gpio = mmc_ap_dk07,
+		.mmc_gpio_count = ARRAY_SIZE(mmc_ap_dk07),
+		.spi_nand_available = 0,
+		.nor_nand_available = 0,
+		.nor_emmc_available = 0,
+		.dtb_config_name = { "config@13", "config@ap.dk07.1-c2" },
+	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_DB_DK01_1_C1,
 		.ddr_size = (256 << 20),
@@ -1079,7 +1388,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@6",
+		.dtb_config_name = { "config@6", "config@db.dk01.1-c1" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_DB_DK02_1_C1,
@@ -1103,7 +1412,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "#config@7",
+		.dtb_config_name = { "config@7", "config@db.dk02.1-c1" },
 	},
 	{
 		.machid = MACH_TYPE_IPQ40XX_TB832,
@@ -1118,7 +1427,7 @@ board_ipq40xx_params_t board_params[] = {
 		.spi_nand_available = 0,
 		.nor_nand_available = 0,
 		.nor_emmc_available = 0,
-		.dtb_config_name = "",
+		.dtb_config_name = { "", "" },
 	},
 };
 

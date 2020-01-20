@@ -65,5 +65,5 @@ enum Mii_Phy_Status {
 };
 
 int ipq_phy_mdio_init(char *name);
-uint ipq_mdio_write(struct mii_dev *bus, uint phy_addr, uint reg_offset, ushort data);
-uint ipq_mdio_read(struct mii_dev *bus, uint phy_addr, uint reg_offset, ushort *data);
+uint ipq_mdio_write(uint phy_addr, uint reg_offset, ushort data);
+uint ipq_mdio_read(uint phy_addr, uint reg_offset, ushort *data);

@@ -191,23 +191,11 @@ gccincdir := $(shell $(CC) -print-file-name=include)
 CPPFLAGS := $(DBGFLAGS) $(OPTFLAGS) $(RELFLAGS)		\
 	-D__KERNEL__
 
-ifneq ($(CONFIG_MODEL),)
-ifneq ($(findstring 4G-,$(CONFIG_MODEL)),)
-MODEL = RT$(subst -,,$(CONFIG_MODEL))
-else ifneq ($(findstring DSL,$(CONFIG_MODEL)),)
-MODEL = $(subst -,_,$(CONFIG_MODEL))
-else
-MODEL = $(subst -,,$(CONFIG_MODEL))
-endif
-export MODEL
-endif
-
-# use shell to run echo command to strip double-quote character from $(MODEL)
-CPPFLAGS += $(if $(MODEL),-D$(shell echo $(MODEL)))
-
 # Enable garbage collection of un-used sections for SPL
+ifeq ($(CONFIG_SPL_BUILD),y)
 CPPFLAGS += -ffunction-sections -fdata-sections
 LDFLAGS_FINAL += --gc-sections
+endif
 
 ifneq ($(CONFIG_SYS_TEXT_BASE),)
 CPPFLAGS += -DCONFIG_SYS_TEXT_BASE=$(CONFIG_SYS_TEXT_BASE)
@@ -248,8 +236,6 @@ CFLAGS += $(QSDK_CFLAGS)
 
 CFLAGS_SSP := $(call cc-option,-fno-stack-protector)
 CFLAGS += $(CFLAGS_SSP)
-#CFLAGS += -DDEBUG_FACTORY_RW
-#CFLAGS += -DDEBUG_LED_GPIO
 # Some toolchains enable security related warning flags by default,
 # but they don't make much sense in the u-boot world, so disable them.
 CFLAGS_WARN := $(call cc-option,-Wno-format-nonliteral) \
@@ -273,7 +259,7 @@ endif
 
 AFLAGS := $(AFLAGS_DEBUG) -D__ASSEMBLY__ $(CPPFLAGS)
 
-LDFLAGS += $(PLATFORM_LDFLAGS) -nostdlib
+LDFLAGS += $(PLATFORM_LDFLAGS)
 LDFLAGS_FINAL += -Bstatic
 
 LDFLAGS_u-boot += -T $(obj)u-boot.lds $(LDFLAGS_FINAL)
@@ -324,25 +310,45 @@ ALL_CFLAGS = $(CFLAGS) $(CFLAGS_$(BCURDIR)/$(@F)) $(CFLAGS_$(BCURDIR))
 EXTRA_CPPFLAGS = $(CPPFLAGS_$(BCURDIR)/$(@F)) $(CPPFLAGS_$(BCURDIR))
 ALL_CFLAGS += $(EXTRA_CPPFLAGS)
 
+RED=\e[1;31;40m
+GRN=\e[1;32;40m
+YLW=\e[1;33;40m
+CYN=\e[1;36;40m
+NRM=\e[0m
+
+ifeq ($(verbose),)
+define compile
+	echo -e "$(CYN)$(firstword $1)$(GRN) $(subst $(TOPDIR)/,,$(abspath $<))$(RED)"
+	$1
+	echo -ne "$(NRM)"
+endef
+else
+define compile
+	echo -e "$(CYN)$1$(RED)"
+	$1
+	echo -ne "$(NRM)"
+endef
+endif
+
 # The _DEP version uses the $< file target (for dependency generation)
 # See rules.mk
 EXTRA_CPPFLAGS_DEP = $(CPPFLAGS_$(BCURDIR)/$(addsuffix .o,$(basename $<))) \
 		$(CPPFLAGS_$(BCURDIR))
 $(obj)%.s:	%.S
-	$(CPP) $(ALL_AFLAGS) -o $@ $<
+	@$(call compile,$(CPP) $(ALL_AFLAGS) -o $@ $<)
 $(obj)%.o:	%.S
-	$(CC)  $(ALL_AFLAGS) -o $@ $< -c
+	@$(call compile,$(CC)  $(ALL_AFLAGS) -o $@ $< -c)
 $(obj)%.o:	%.c
-	$(CC)  $(ALL_CFLAGS) -o $@ $< -c
+	@$(call compile,$(CC)  $(ALL_CFLAGS) -o $@ $< -c)
 $(obj)%.i:	%.c
-	$(CPP) $(ALL_CFLAGS) -o $@ $< -c
+	@$(call compile,$(CPP) $(ALL_CFLAGS) -o $@ $< -c)
 $(obj)%.s:	%.c
-	$(CC)  $(ALL_CFLAGS) -o $@ $< -c -S
+	@$(call compile,$(CC)  $(ALL_CFLAGS) -o $@ $< -c -S)
 
 #########################################################################
 
 # If the list of objects to link is empty, just create an empty built-in.o
-cmd_link_o_target = $(if $(strip $1),\
+cmd_link_o_target = $(silent)$(if $(strip $1),\
 		      $(LD) $(LDFLAGS) -r -o $@ $1,\
 		      rm -f $@; $(AR) rcs $@ )
 

@@ -28,7 +28,7 @@
  * changes to support FDT are minimized.
  */
 
-#include <linux/libfdt.h>
+#include <libfdt.h>
 
 /*
  * A typedef for a physical address. Note that fdt data is always big

@@ -26,31 +26,30 @@
 gpio_func_data_t gmac0_gpio[] = {
 	{
 		.gpio = 0,
-		.func = 1,	/* 1 for MDIO 0 */
+		.func = 1,
 		.pull = GPIO_NO_PULL,
 		.drvstr = GPIO_8MA,
 		.oe = GPIO_OE_DISABLE
 	},
 	{
 		.gpio = 1,
-		.func = 1,	/* 1 for MDC 0 */
+		.func = 1,
 		.pull = GPIO_NO_PULL,
 		.drvstr = GPIO_8MA,
 		.oe = GPIO_OE_ENABLE
 	},
-	/* GMAC1, RGMII 2.5V */
 	{
 		.gpio = 2,
 		.func = 0,
 		.pull = GPIO_NO_PULL,
-		.drvstr = GPIO_16MA,		/* Drv Str for RGMII_RX[] */
+		.drvstr = GPIO_8MA,
 		.oe = GPIO_OE_DISABLE
 	},
 	{
 		.gpio = 66,
 		.func = 0,
 		.pull = GPIO_NO_PULL,
-		.drvstr = GPIO_16MA,		/* Drv Str for RGMII_TX[] */
+		.drvstr = GPIO_16MA,
 		.oe = GPIO_OE_DISABLE
 	},
 };

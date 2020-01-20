@@ -21,8 +21,11 @@
 #include <part.h>
 #include <linux/mtd/ubi.h>
 #include <asm/arch-ipq40xx/smem.h>
+#include <asm/arch-ipq40xx/iomap.h>
 #include <mmc.h>
+#include <i2c.h>
 #include "ipq40xx_cdp.h"
+#include <uboot_config.h>
 
 #define DLOAD_MAGIC_COOKIE	0x10
 #define XMK_STR(x)		#x
@@ -91,30 +94,73 @@ static int inline do_dumpipq_data(void)
 static int set_fs_bootargs(int *fs_on_nand)
 {
 	char *bootargs;
-
+	char *s;
+	unsigned int active_part = 0;
 #define nand_rootfs	"ubi.mtd=" IPQ_ROOT_FS_PART_NAME " root=mtd:ubi_rootfs rootfstype=squashfs"
+#define nand_rootfs_alt	"ubi.mtd=" IPQ_ROOT_FS_ALT_PART_NAME " root=mtd:ubi_rootfs rootfstype=squashfs"
 
 	if (sfi->flash_type == SMEM_BOOT_SPI_FLASH) {
-		if ((
-		(sfi->rootfs.offset == 0xBAD0FF5E) &&
+		if (((sfi->rootfs.offset == 0xBAD0FF5E) &&
 		(gboard_param->nor_emmc_available == 0)) ||
 			get_which_flash_param("rootfs")) {
 			bootargs = nand_rootfs;
+			if ((s = getenv("firmware_partition")) != NULL) 
+			{
+			    if(!strncmp(s, "1", 1))
+			    {
+			        bootargs = nand_rootfs_alt;
+			    }
+		    }
 			*fs_on_nand = 1;
 			gboard_param->nor_nand_available = 1;
+			//if (getenv("fsbootargs") == NULL)  /* Comment out by Bob, overwrite this entry anyway */
+			{
+				setenv("fsbootargs", bootargs);
+			}
+		} else {
+			if (smem_bootconfig_info() == 0) {
+				active_part = get_rootfs_active_partition();
+				if (active_part) {
+					bootargs = "rootfsname=rootfs_1";
+				} else {
+					bootargs = "rootfsname=rootfs";
+				}
+			} else {
+				bootargs = "rootfsname=rootfs";
+			}
+			*fs_on_nand = 0;
 			if (getenv("fsbootargs") == NULL)
 				setenv("fsbootargs", bootargs);
-		} else {
-			*fs_on_nand = 0;
 		}
 	} else if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) {
 		bootargs = nand_rootfs;
-		if (getenv("fsbootargs") == NULL)
+		if ((s = getenv("firmware_partition")) != NULL) 
+		{
+		    if(!strncmp(s, "1", 1))
+			{
+			    bootargs = nand_rootfs_alt;
+			 }
+		}
+		
+		//if (getenv("fsbootargs") == NULL)
 			setenv("fsbootargs", bootargs);
 		*fs_on_nand = 1;
 #ifdef CONFIG_QCA_MMC
 	} else if (sfi->flash_type == SMEM_BOOT_MMC_FLASH) {
+		if (smem_bootconfig_info() == 0) {
+			active_part = get_rootfs_active_partition();
+			if (active_part) {
+				bootargs = "rootfsname=rootfs_1";
+			} else {
+				bootargs = "rootfsname=rootfs";
+			}
+		} else {
+			bootargs = "rootfsname=rootfs";
+		}
+
 		*fs_on_nand = 0;
+		if (getenv("fsbootargs") == NULL)
+			setenv("fsbootargs", bootargs);
 #endif
 	} else {
 		printf("bootipq: unsupported boot flash type\n");
@@ -122,6 +168,27 @@ static int set_fs_bootargs(int *fs_on_nand)
 	}
 
 	return run_command("setenv bootargs ${bootargs} ${fsbootargs} rootwait", 0);
+}
+
+int config_select(unsigned int addr, const char **config, char *rcmd, int rcmd_size)
+{
+	/* Selecting a config name from the list of available
+	 * config names by passing them to the fit_conf_get_node()
+	 * function which is used to get the node_offset with the
+	 * config name passed. Based on the return value index based
+	 * or board name based config is used.
+	 */
+
+	int i;
+	for (i = 0; i < MAX_CONF_NAME && config[i]; i++) {
+		if (fit_conf_get_node((void *)addr, config[i]) >= 0) {
+			snprintf(rcmd, rcmd_size, "bootm 0x%x#%s\n",
+				addr, config[i]);
+			return 0;
+		}
+	}
+	printf("Config not availabale\n");
+	return -1;
 }
 
 static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
@@ -133,9 +200,11 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 	char runcmd[256];
 	int ret;
 	unsigned int request;
+    char *crash_pause;
 #ifdef CONFIG_QCA_MMC
 	block_dev_desc_t *blk_dev;
 	disk_partition_t disk_info;
+	unsigned int active_part = 0;
 #endif
 
 	if (argc == 2 && strncmp(argv[1], "debug", 5) == 0)
@@ -147,6 +216,10 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 			0, (void *)&val, sizeof(val));
 	/* check if we are in download mode */
 	if (val == DLOAD_MAGIC_COOKIE) {
+#ifdef CONFIG_IPQ_ETH_INIT_DEFER
+		puts("\nNet:   ");
+		eth_initialize(gd->bd);
+#endif
 		/* clear the magic and run the dump command */
 		val = 0x0;
 		ret = scm_call(SCM_SVC_BOOT, SCM_SVC_WR,
@@ -155,7 +228,17 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 			printf ("Error in reseting the Magic cookie\n");
 
 		etime = get_timer_masked() + (10 * CONFIG_SYS_HZ);
+        
+        if((crash_pause = getenv("crash_pause")) != NULL){
+           // printf("env crash_pause = %s\n",crash_pause);            
+            if(!strncmp(crash_pause, "1", 1)){
+             //   printf("%s:%d\n",__func__,__LINE__);            
+			    printf("\nstop to dump crash log\n");
+                return CMD_RET_FAILURE;
+            }
+        }
 
+        
 		printf("\nCrashdump magic found."
 			"\nHit any key within 10s to stop dump activity...");
 		while (!tstc()) {       /* while no incoming data */
@@ -222,7 +305,7 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 			request);
 
 		if (debug)
-			printf(runcmd);
+			printf("runcmd: %s\n", runcmd);
 
 		if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
 			return CMD_RET_FAILURE;
@@ -232,7 +315,16 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 #ifdef CONFIG_QCA_MMC
 	} else if (sfi->flash_type == SMEM_BOOT_MMC_FLASH || (gboard_param->nor_emmc_available == 1)) {
 		blk_dev = mmc_get_dev(host->dev_num);
-		ret = find_part_efi(blk_dev, "0:HLOS", &disk_info);
+		if (smem_bootconfig_info() == 0) {
+			active_part = get_rootfs_active_partition();
+			if (active_part) {
+				ret = find_part_efi(blk_dev, "0:HLOS_1", &disk_info);
+			} else {
+				ret = find_part_efi(blk_dev, "0:HLOS", &disk_info);
+			}
+		} else {
+			ret = find_part_efi(blk_dev, "0:HLOS", &disk_info);
+		}
 
 		if (ret > 0) {
 			snprintf(runcmd, sizeof(runcmd), "mmc read 0x%x 0x%X 0x%X",
@@ -255,7 +347,7 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 			request, sfi->hlos.offset, sfi->hlos.size);
 
 		if (debug)
-			printf(runcmd);
+			printf("runcmd: %s\n", runcmd);
 
 		if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
 			return CMD_RET_FAILURE;
@@ -273,19 +365,23 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 		BUG();
 	}
 
-	snprintf(runcmd, sizeof(runcmd), "bootm 0x%x%s\n", request, gboard_param->dtb_config_name);
+	dcache_enable();
+
+	ret = config_select(request, gboard_param->dtb_config_name,
+				runcmd, sizeof(runcmd));
 
 	if (debug)
-		printf(runcmd);
+		printf("runcmd: %s\n", runcmd);
 
 #ifdef CONFIG_QCA_MMC
 	board_mmc_deinit();
 #endif
 
-	if (run_command(runcmd, 0) != CMD_RET_SUCCESS) {
+	if (ret < 0 || run_command(runcmd, 0) != CMD_RET_SUCCESS) {
 #ifdef CONFIG_QCA_MMC
 	mmc_initialize(gd->bd);
 #endif
+		dcache_disable();
 		return CMD_RET_FAILURE;
 	}
 
@@ -294,15 +390,18 @@ static int do_boot_signedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const a
 
 static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
+    char *s;
 #ifdef CONFIG_QCA_APPSBL_DLOAD
 	uint64_t etime;
 	volatile u32 val;
 #endif
 	int ret;
 	char runcmd[256];
+    char *crash_pause;
 #ifdef CONFIG_QCA_MMC
 	block_dev_desc_t *blk_dev;
 	disk_partition_t disk_info;
+	unsigned int active_part = 0;
 #endif
 
 	if (argc == 2 && strncmp(argv[1], "debug", 5) == 0)
@@ -312,6 +411,10 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 			0, (void *)&val, sizeof(val));
 	/* check if we are in download mode */
 	if (val == DLOAD_MAGIC_COOKIE) {
+#ifdef CONFIG_IPQ_ETH_INIT_DEFER
+		puts("\nNet:   ");
+		eth_initialize(gd->bd);
+#endif
 		/* clear the magic and run the dump command */
 		val = 0x0;
 		ret = scm_call(SCM_SVC_BOOT, SCM_SVC_WR,
@@ -320,6 +423,18 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 			printf ("Error in reseting the Magic cookie\n");
 
 		etime = get_timer_masked() + (10 * CONFIG_SYS_HZ);
+                
+ 
+
+        if((crash_pause = getenv("crash_pause")) != NULL){
+        //    printf("env crash_pause = %s\n",crash_pause);            
+            if(!strncmp(crash_pause, "1", 1)){
+			    printf("\nstop to dump crash log\n");           
+                return CMD_RET_FAILURE;
+            }
+        }
+
+
 
 		printf("\nCrashdump magic found."
 			"\nHit any key within 10s to stop dump activity...");
@@ -357,6 +472,13 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 			printf(" bad offset of hlos");
 			return -1;
 		}
+		if ((s = getenv("firmware_partition")) != NULL) 
+			{
+			    if(!strncmp(s, "1", 1))
+			    {
+			        sfi->rootfs.offset += sfi->rootfs.size;
+			    }
+		    }
 
 		snprintf(runcmd, sizeof(runcmd),
 			"set mtdids nand0=nand0 && "
@@ -367,14 +489,19 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 			CONFIG_SYS_LOAD_ADDR);
 
 	} else if ((sfi->flash_type == SMEM_BOOT_SPI_FLASH) && (gboard_param->nor_emmc_available == 0)) {
-		if (
-		(sfi->rootfs.offset == 0xBAD0FF5E)
-			 || get_which_flash_param("rootfs"))
-		{
+		if ((sfi->rootfs.offset == 0xBAD0FF5E) ||
+			get_which_flash_param("rootfs")) {
 			if (sfi->rootfs.offset == 0xBAD0FF5E) {
 				sfi->rootfs.offset = 0;
 				sfi->rootfs.size = IPQ_NAND_ROOTFS_SIZE;
 			}
+			if ((s = getenv("firmware_partition")) != NULL) 
+			{
+			    if(!strncmp(s, "1", 1))
+			    {
+			        sfi->rootfs.offset = sfi->rootfs.size;
+			    }
+		    }
 			snprintf(runcmd, sizeof(runcmd),
 				"nand device %d && "
 				"set mtdids nand%d=nand%d && "
@@ -402,15 +529,21 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 			printf("Using MMC device\n");
 		}
 		blk_dev = mmc_get_dev(host->dev_num);
-		ret = find_part_efi(blk_dev, "0:HLOS", &disk_info);
+		if (smem_bootconfig_info() == 0) {
+			active_part = get_rootfs_active_partition();
+			if (active_part) {
+				ret = find_part_efi(blk_dev, "0:HLOS_1", &disk_info);
+			} else {
+				ret = find_part_efi(blk_dev, "0:HLOS", &disk_info);
+			}
+		} else {
+			ret = find_part_efi(blk_dev, "0:HLOS", &disk_info);
+		}
 
 		if (ret > 0) {
 			snprintf(runcmd, sizeof(runcmd), "mmc read 0x%x 0x%x 0x%x",
 					CONFIG_SYS_LOAD_ADDR,
 					(uint)disk_info.start, (uint)disk_info.size);
-
-			if (run_command(runcmd, 0) != CMD_RET_SUCCESS)
-				return CMD_RET_FAILURE;
 		}
 
 #endif   	/* CONFIG_QCA_MMC   */
@@ -419,10 +552,6 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 		return -1;
 	}
 
-#ifdef CONFIG_QCA_MMC
-	board_mmc_deinit();
-#endif
-
 	if (run_command(runcmd, 0) != CMD_RET_SUCCESS) {
 #ifdef CONFIG_QCA_MMC
 		mmc_initialize(gd->bd);
@@ -430,12 +559,12 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 		return CMD_RET_FAILURE;
 	}
 
+	dcache_enable();
+
 	ret = genimg_get_format((void *)CONFIG_SYS_LOAD_ADDR);
 	if (ret == IMAGE_FORMAT_FIT) {
-		snprintf(runcmd, sizeof(runcmd),
-			"bootm 0x%x%s\n", CONFIG_SYS_LOAD_ADDR,
-				gboard_param->dtb_config_name
-			);
+		ret = config_select(CONFIG_SYS_LOAD_ADDR, gboard_param->dtb_config_name,
+				runcmd, sizeof(runcmd));
 	} else if (ret == IMAGE_FORMAT_LEGACY) {
 		snprintf(runcmd, sizeof(runcmd),
 			"bootm 0x%x\n", CONFIG_SYS_LOAD_ADDR);
@@ -443,27 +572,106 @@ static int do_boot_unsignedimg(cmd_tbl_t *cmdtp, int flag, int argc, char *const
 		ret = genimg_get_format((void *)CONFIG_SYS_LOAD_ADDR +
 					sizeof(mbn_header_t));
 		if (ret == IMAGE_FORMAT_FIT) {
-			snprintf(runcmd, sizeof(runcmd),
-				"bootm 0x%x%s\n", (CONFIG_SYS_LOAD_ADDR +
-				sizeof(mbn_header_t)), gboard_param->dtb_config_name);
+			ret = config_select((CONFIG_SYS_LOAD_ADDR + sizeof(mbn_header_t)),
+					gboard_param->dtb_config_name,
+					runcmd, sizeof(runcmd));
 		} else if (ret == IMAGE_FORMAT_LEGACY) {
 			snprintf(runcmd, sizeof(runcmd),
 				"bootm 0x%x\n", (CONFIG_SYS_LOAD_ADDR +
 				sizeof(mbn_header_t)));
-		} else
+		} else {
+			dcache_disable();
 			return CMD_RET_FAILURE;
+		}
 	}
 
-	if (run_command(runcmd, 0) != CMD_RET_SUCCESS) {
+	if (ret < 0 || run_command(runcmd, 0) != CMD_RET_SUCCESS) {
+		dcache_disable();
 		return CMD_RET_FAILURE;
 	}
 	return CMD_RET_SUCCESS;
+}
+
+static int check_reset(void)
+{
+    int i;
+    s32 ret = 0 ;
+    u32 start_blocks;
+    u32 size_blocks;
+    loff_t nvram_offset, nvram_size;
+    char cmd[256];
+	
+    unsigned int *addr_reset = (unsigned int*)GPIO_IN_OUT_ADDR(18);
+    unsigned int *addr_wps = (unsigned int*)GPIO_IN_OUT_ADDR(44);
+      
+    if( (*addr_reset==0x0) && (*addr_wps==0x0))  /* reset $ wps button are pressed */
+    {
+        for(;;)
+        {
+            mdelay(100);
+            if( (*addr_reset!=0x0) && (*addr_wps!=0x0))
+                break;
+        }
+        /* Enter NMRP mode */
+        i2c_led_ctrl(LED_LP5562_AMBER, 1, 100); //Solid amber
+        setenv("bootargs", "NMRP");
+        return 0;
+    }
+    else if( *addr_reset == 0x0 )  /* reset button is pressed */
+    {
+        i2c_led_ctrl(LED_LP5562_AMBER, 1, 100);//Solid Amber
+        for (i=0; i<50; i++)
+        {
+            mdelay(100);
+            if(*addr_reset != 0x0)
+            {
+                run_command("reset", 0);    /*reset button is pressed less than 5 seconds, reboot device */
+            }
+        }
+        i2c_led_ctrl(LED_LP5562_AMBER, 2, 100); /*reset button is pressed more than 5 seconds, pulse amber LED */
+        for(;;)
+        {
+            mdelay(100);
+            if(*addr_reset != 0x0)
+                break;  /* reset button is released, reboot device */
+        }
+        ret = smem_getpart("nvram", &start_blocks, &size_blocks);
+        if (ret < 0) {
+            printf("No nvram partition found\n");
+            return ret;
+        }
+		
+        nvram_offset = ((loff_t) qca_smem_flash_info.flash_block_size * start_blocks);
+        nvram_size = ((loff_t) qca_smem_flash_info.flash_block_size * size_blocks);
+        
+        if (sfi->flash_type == SMEM_BOOT_SPI_FLASH) 
+        {
+            run_command("sf probe", 0);
+            run_command("sf erase 0x180000 0x20000", 0);
+        }
+        if (sfi->flash_type == SMEM_BOOT_NAND_FLASH) 
+        {
+            sprintf(cmd, "nand erase 0x%llx 0x%llx", nvram_offset, nvram_size);
+            run_command(cmd, 0);
+        }
+        printf("load default!\n");
+        mdelay(300);
+        run_command("reset", 0);
+    }
+
+    return 0;
 }
 
 static int do_bootipq(cmd_tbl_t *cmdtp, int flag, int argc, char *const argv[])
 {
 	int ret;
 	char buf;
+	char uboot_ver[128];
+	
+	sprintf(uboot_ver, "uboot_ver=%s", ACOS_BOOTCODE_VERSION);
+	setenv("bootargs", uboot_ver);
+	check_reset(); /* Bob added on 06/08/2016, to check if reset button is pressed when device booting up */
+
 	/*
 	 * set fdt_high parameter so that u-boot will not load
 	 * dtb above CONFIG_IPQ40XX_FDT_HIGH region.
